@@ -1,6 +1,6 @@
 # STACAME
 
-![STACAME_Overview](./figs/stacame.png)
+![STACAME_Overview](./Figs/stacame.png)
 
 
 ## Overview
