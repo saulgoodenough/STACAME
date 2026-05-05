@@ -126,7 +126,7 @@ def get_species_triples(species_parameters):
 
 
 
-def create_dictionary_mnn(adata, use_rep, batch_name, k = 50, save_on_disk = True, approx = False, verbose = 1, iter_comb = None):
+def create_dictionary_mnn(adata, use_rep, batch_name, k = 50, save_on_disk = True, approx = True, verbose = 1, iter_comb = None):
 
     cell_names = adata.obs_names
 
