@@ -214,7 +214,7 @@ def nn_approx(ds1, ds2, names1, names2, knn=50):
 
 def nn(ds1, ds2, names1, names2, knn=50, metric_p=2):
     # Find nearest neighbors of first dataset.
-    nn_ = NearestNeighbors(knn, p=metric_p)
+    nn_ = NearestNeighbors(n_neighbors=knn, p=metric_p)
     nn_.fit(ds2)
     ind = nn_.kneighbors(ds1, return_distance=False)
 
