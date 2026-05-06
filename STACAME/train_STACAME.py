@@ -1004,7 +1004,7 @@ def train_STACAME_GAN(adata_species_dict,
             mmd_loss_sum = mmd_loss_sum + mmd_loss(auxiliary_z[ind_1,].to(device), auxiliary_z[ind_2,].to(device)).to(
                 device)
 
-            loss_ot = 0
+            loss_ot = torch.tensor(0.0)
             if ot_beta != 0:
                 z_A = z[ind_1,].to(device)
                 z_B = z[ind_2,].to(device)
@@ -1089,8 +1089,16 @@ def train_STACAME_GAN(adata_species_dict,
             loss_dict['Loss value'].append(mmd_loss_sum.item())
         if verbose == True and epoch % 100 == 0:
             print(f'---------------------------------Epoch {epoch}-----------------------------------')
-            print(
-                f'MSE loss:{mse_beta * mse_loss.item()},  Cross species triplets:{tri_beta * tri_output_species.item()}, MMD loss:{mmd_beta * mmd_loss_sum.item()}, GAN loss:{gan_beta * loss_G_GAN.item()}')
+            print(f'Loss:{loss.item()},'
+                f'MSE:{mse_beta * mse_loss.item()}|'
+                f'Cross species triplets:{tri_beta * tri_output_species.item()}|'
+                f'MMD:{mmd_beta * mmd_loss_sum.item()}|'
+                f'GAN:{gan_beta * loss_G_GAN.item()}|')
+            if ot_beta > 0:
+                loss_dict['Loss name'].append('OT')
+                loss_dict['Epoch'].append(epoch)
+                loss_dict['Loss value'].append(ot_loss.item())
+                print(f'ot:{ot_beta * loss_ot.item()}')
             if if_integrate_within_species == True:
                 print(
                     f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(sampling_num_spe).to(device)).item()}, Cross slices triplets: {tri_output.item()}')
