@@ -1,7 +1,4 @@
 import numpy as np
-
-import torch
-import torch.nn as nn
 import torch.backends.cudnn as cudnn
 cudnn.deterministic = True
 cudnn.benchmark = True
@@ -57,23 +54,87 @@ class RBF(nn.Module):
         L2_distances = (torch.cdist(X, X) ** 2).to(self.device)
         return (torch.exp(-L2_distances[None, ...] / (self.get_bandwidth(L2_distances) * self.bandwidth_multipliers)[:, None, None]).sum(dim=0)).to(self.device)
 
-
-class MMDLoss(nn.Module):
-    def __init__(self, kernel=RBF(device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')), 
-                 device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')):
-        super().__init__()
-        self.kernel = kernel
-        self.device = device
-
-    def forward(self, X, Y):
-        device = self.device
-        K = self.kernel(torch.vstack([X, Y]).to(device)).to(device)
-
-        X_size = X.shape[0]
-        XX = K[:X_size, :X_size].mean().to(device)
-        XY = K[:X_size, X_size:].mean().to(device)
-        YY = K[X_size:, X_size:].mean().to(device)
-        return (XX - 2 * XY + YY).to(device)
+# class RBF(nn.Module):
+#     """
+#     Radial Basis Function (RBF) kernel for MMD loss.
+#
+#     Computes a mixture of Gaussian kernels with different bandwidths.
+#     The multipliers are created lazily to avoid device initialisation
+#     issues at module import time.
+#     """
+#
+#     def __init__(
+#         self,
+#         n_kernels: int = 5,
+#         mul_factor: float = 2.0,
+#         bandwidth: Optional[float] = None,
+#         device: torch.device = torch.device(
+#             "cuda:0" if torch.cuda.is_available() else "cpu"
+#         ),
+#     ):
+#         super().__init__()
+#         self.n_kernels = n_kernels
+#         self.mul_factor = mul_factor
+#         self.bandwidth = bandwidth
+#         self.device = device
+#         # Multipliers will be built on the first forward pass
+#         self.bandwidth_multipliers = None
+#
+#     def _init_multipliers(self):
+#         """Create the bandwidth multipliers on the correct device."""
+#         if self.bandwidth_multipliers is None:
+#             self.bandwidth_multipliers = (
+#                 self.mul_factor
+#                 ** (torch.arange(self.n_kernels) - self.n_kernels // 2)
+#             ).to(self.device)
+#
+#     def get_bandwidth(self, L2_distances: torch.Tensor) -> torch.Tensor:
+#         """Heuristic bandwidth estimation from median pairwise distance."""
+#         n = L2_distances.shape[0]
+#         if self.bandwidth is None:
+#             # Use median of the upper‑triangular distances
+#             return (
+#                 L2_distances[torch.triu_indices(n, n, 1)].median()
+#                 / np.log(n)
+#             )
+#         return self.bandwidth
+#
+#     def forward(self, X: torch.Tensor) -> torch.Tensor:
+#         """
+#         Compute multi‑bandwidth RBF kernel values.
+#
+#         Parameters
+#         ----------
+#         X : torch.Tensor
+#             Input tensor of shape (batch_size, feature_dim).
+#
+#         Returns
+#         -------
+#         torch.Tensor
+#             Kernel values of shape (n_kernels, batch_size, batch_size).
+#         """
+#         self._init_multipliers()
+#         L2_distances = (torch.cdist(X, X) ** 2).to(self.device)
+#         bw = self.get_bandwidth(L2_distances)
+#         scales = bw * self.bandwidth_multipliers[:, None, None]
+#         return torch.exp(-L2_distances[None, ...] / scales).sum(dim=0)
+#
+# class MMDLoss(nn.Module):
+#     def __init__(self, kernel=RBF(device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')),
+#                  device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')):
+#         super().__init__()
+#         self.kernel = kernel
+#         self.device = device
+#
+#     def forward(self, X, Y):
+#         device = self.device
+#         K = self.kernel(torch.vstack([X, Y]).to(device)).to(device)
+#
+#         X_size = X.shape[0]
+#         XX = K[:X_size, :X_size].mean().to(device)
+#         XY = K[:X_size, X_size:].mean().to(device)
+#         YY = K[X_size:, X_size:].mean().to(device)
+#         return (XX - 2 * XY + YY).to(device)
 
 
 

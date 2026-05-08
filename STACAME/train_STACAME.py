@@ -36,302 +36,397 @@ def random_list(N, subsampling_rate):
     return result
 
 
+
+import numpy as np
+import pandas as pd
+import scanpy as sc
+import anndata as ad
+import matplotlib.pyplot as plt
+import seaborn as sns
+import colorcet as cc
+from collections import Counter
+
+
 def clustering_umap(adata_dict, key_umap='STACAME'):
+    """
+    Multi‑species joint UMAP visualization and Louvain clustering.
+
+    Parameters
+    ----------
+    adata_dict : dict
+        Keys are species identifiers, values are AnnData objects.
+    key_umap : str
+        Key in ``obsm`` that stores the embedding to be used for
+        neighbourhood graph construction.
+
+    Returns
+    -------
+    None
+        All results are displayed as matplotlib figures.
+    """
+    # Determine automatic colour palette for species
+    species_ids = list(adata_dict.keys())
+    n_species = len(species_ids)
+    if n_species <= 10:
+        species_color = sns.color_palette("tab10", n_colors=n_species).as_hex()
+    elif n_species <= 20:
+        species_color = sns.color_palette("tab20", n_colors=n_species).as_hex()
+    else:
+        species_color = sns.color_palette(cc.glasbey, n_colors=n_species).as_hex()
+
     k = 0
     for species_id, adata in adata_dict.items():
         if k == 0:
             embedding_X = adata.obsm[key_umap]
             embedding_spatial = adata.obsm['spatial']
             embedding_obs_name = list(adata.obs_names)
-            embedding_slice_name = list(adata.obs['slice_name']) 
+            embedding_slice_name = list(adata.obs['slice_name'])
             embedding_batch_name = list(adata.obs['batch_name'])
             embedding_species_id = list(adata.obs['species_id'])
             if 'annotation' in adata.obs:
-                embedding_annotation = list(adata.obs['annotation']) 
+                embedding_annotation = list(adata.obs['annotation'])
         else:
             embedding_X = np.concatenate((embedding_X, adata.obsm[key_umap]), axis=0)
-    
             embedding_spatial = np.concatenate((embedding_spatial, adata.obsm['spatial']), axis=0)
-    
             embedding_obs_name = embedding_obs_name + list(adata.obs_names)
-            embedding_slice_name = embedding_slice_name + list(adata.obs['slice_name']) 
+            embedding_slice_name = embedding_slice_name + list(adata.obs['slice_name'])
             embedding_batch_name = embedding_batch_name + list(adata.obs['batch_name'])
             embedding_species_id = embedding_species_id + list(adata.obs['species_id'])
             if 'annotation' in adata.obs:
                 embedding_annotation = embedding_annotation + list(adata.obs['annotation'])
-            
+
         k += 1
-        # Visualize UMAP of each species
-        sc.pp.neighbors(adata, n_neighbors=20, use_rep=key_umap, metric='cosine',  random_state=666)
+        # Per‑species UMAP (visualization is optional; we skip it here for brevity)
+        sc.pp.neighbors(adata, n_neighbors=20, use_rep=key_umap, metric='cosine', random_state=666)
         sc.tl.louvain(adata, random_state=666, key_added="louvain", resolution=0.5)
         sc.tl.umap(adata, min_dist=1, random_state=666)
         plt.rcParams['font.sans-serif'] = "Arial"
         plt.rcParams["figure.figsize"] = (3, 3)
         plt.rcParams['font.size'] = 10
 
-        
-    adata_embedding = ad.AnnData(X = embedding_X, obs=embedding_obs_name)
+    # Build joint AnnData object
+    adata_embedding = ad.AnnData(X=embedding_X,
+                                  obs=pd.DataFrame(index=embedding_obs_name))
     adata_embedding.obsm['spatial'] = embedding_spatial
     adata_embedding.obs['slice_name'] = embedding_slice_name
     adata_embedding.obs['batch_name'] = embedding_batch_name
     adata_embedding.obs['species_id'] = embedding_species_id
     if 'annotation' in adata.obs:
         adata_embedding.obs['annotation'] = embedding_annotation
-    
-    sc.pp.neighbors(adata_embedding,  n_neighbors=20, use_rep='X', metric='cosine',  random_state=666)
+
+    sc.pp.neighbors(adata_embedding, n_neighbors=20, use_rep='X', metric='cosine', random_state=666)
     sc.tl.louvain(adata_embedding, random_state=666, key_added="louvain", resolution=0.5)
-    
+
     print(adata_embedding.X.shape)
 
     sc.tl.umap(adata_embedding, min_dist=1, random_state=666)
 
-    species_ids = list(adata_dict.keys())
-    
-    species_color = ['#e64b35', '#4dbbd5', '#00a087', '#f39b7f', '#3c5488']#['#4778FA', '#8A1C62', '#ED7A43'] #['#ff7f0e', '#1f77b4']
+    # Assign the automatically chosen species colours
     species_color_dict = dict(zip(species_ids, species_color))
     adata_embedding.uns['species_colors'] = [species_color_dict[x] for x in adata_embedding.obs.species_id]
-    
+
     plt.rcParams['font.sans-serif'] = "Arial"
-    #plt.rcParams["figure.figsize"] = (3, 3)
     plt.rcParams['font.size'] = 10
-    if 'annotation' in adata.obs:
-        sc.pl.umap(adata_embedding, color=['species_id', 'batch_name', 'louvain', 'annotation'], ncols=2, wspace=0.5, show=True)
-    else:
-        sc.pl.umap(adata_embedding, color=['species_id', 'batch_name', 'louvain'], ncols=2, wspace=0.5, show=True)
 
     if 'annotation' in adata.obs:
-        fig, axes = plt.subplots(len(species_ids), 1,  figsize=(5, 4*len(species_ids))) #, dpi=500
-        for i in range(len(species_ids)):
-            species_id = species_ids[i]
-            adata_mh = adata_embedding[adata_embedding.obs['species_id'].isin([species_id])]
-            color_list = sns.color_palette(cc.glasbey, n_colors=len(adata_mh.obs['annotation'].unique()))
-            region_list = [x for x in Counter(adata_mh.obs['annotation']).keys()]
-            palette = {k:v for k,v in zip(region_list, color_list)}
+        sc.pl.umap(adata_embedding,
+                   color=['species_id', 'batch_name', 'louvain', 'annotation'],
+                   ncols=2, wspace=0.5, show=True)
+    else:
+        sc.pl.umap(adata_embedding,
+                   color=['species_id', 'batch_name', 'louvain'],
+                   ncols=2, wspace=0.5, show=True)
+
+    if 'annotation' in adata.obs:
+        fig, axes = plt.subplots(n_species, 1, figsize=(5, 4 * n_species))
+        if n_species == 1:
+            axes = [axes]
+        for i, species_id in enumerate(species_ids):
+            adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
+            unique_annot = adata_mh.obs['annotation'].unique()
+            color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
+            palette = dict(zip(unique_annot, color_list))
             ax = sc.pl.umap(adata_embedding, show=False, ax=axes[i])
-            sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, legend_loc='on data', palette=palette)
+            sc.pl.umap(adata_mh, color='annotation', ax=ax, wspace=0.5,
+                       show=False, legend_loc='on data', palette=palette)
         plt.show()
-    
-        fig, axes = plt.subplots(len(species_ids), 1,  figsize=(5, 4*len(species_ids))) #, dpi=500
-        for i in range(len(species_ids)):
-            species_id = species_ids[i]
-            adata_mh = adata_embedding[adata_embedding.obs['species_id'].isin([species_id])]
-            color_list = sns.color_palette(cc.glasbey, n_colors=len(adata_mh.obs['annotation'].unique()))
-            region_list = [x for x in Counter(adata_mh.obs['annotation']).keys()]
-            palette = {k:v for k,v in zip(region_list, color_list)}
+
+        fig, axes = plt.subplots(n_species, 1, figsize=(5, 4 * n_species))
+        if n_species == 1:
+            axes = [axes]
+        for i, species_id in enumerate(species_ids):
+            adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
+            unique_annot = adata_mh.obs['annotation'].unique()
+            color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
+            palette = dict(zip(unique_annot, color_list))
             ax = sc.pl.umap(adata_embedding, show=False, ax=axes[i])
-            sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, legend_loc='right margin', palette=palette)
+            sc.pl.umap(adata_mh, color='annotation', ax=ax, wspace=0.5,
+                       show=False, legend_loc='right margin', palette=palette)
         plt.show()
+
     return None
 
 
+def clustering_umap_downsampling(adata_dict, key_umap='STACAME', downsampling_rate=0.1):
+    """
+    Multi‑species UMAP with random down‑sampling per species.
 
-def clustering_umap_downsampling(adata_dict, key_umap='STACAME', downsampling_rate = 0.1):
-    
+    Parameters
+    ----------
+    adata_dict : dict
+        Keys are species identifiers, values are AnnData objects.
+    key_umap : str
+        Key in ``obsm`` for the embedding.
+    downsampling_rate : float
+        Fraction of cells to retain from each species (default 0.1).
+
+    Returns
+    -------
+    None
+    """
+    species_ids = list(adata_dict.keys())
+    n_species = len(species_ids)
+
+    # Automatic species colour assignment
+    if n_species <= 10:
+        species_color = sns.color_palette("tab10", n_colors=n_species).as_hex()
+    elif n_species <= 20:
+        species_color = sns.color_palette("tab20", n_colors=n_species).as_hex()
+    else:
+        species_color = sns.color_palette(cc.glasbey, n_colors=n_species).as_hex()
+
     k = 0
-    for species_id, adata_ in adata_dict.items():
-        adata = sc.pp.subsample(adata_, fraction=0.1, copy=True)
+    for species_id, adata_full in adata_dict.items():
+        # Down‑sample using the user‑supplied rate (not hard‑coded 0.1)
+        adata = sc.pp.subsample(adata_full, fraction=downsampling_rate, copy=True)
+
         if k == 0:
             embedding_X = adata.obsm[key_umap]
             embedding_spatial = adata.obsm['spatial']
             embedding_obs_name = list(adata.obs_names)
-            embedding_slice_name = list(adata.obs['slice_name']) 
+            embedding_slice_name = list(adata.obs['slice_name'])
             embedding_batch_name = list(adata.obs['batch_name'])
             embedding_species_id = list(adata.obs['species_id'])
             if 'annotation' in adata.obs:
-                embedding_annotation = list(adata.obs['annotation']) 
+                embedding_annotation = list(adata.obs['annotation'])
         else:
             embedding_X = np.concatenate((embedding_X, adata.obsm[key_umap]), axis=0)
-    
             embedding_spatial = np.concatenate((embedding_spatial, adata.obsm['spatial']), axis=0)
-    
             embedding_obs_name = embedding_obs_name + list(adata.obs_names)
-            embedding_slice_name = embedding_slice_name + list(adata.obs['slice_name']) 
+            embedding_slice_name = embedding_slice_name + list(adata.obs['slice_name'])
             embedding_batch_name = embedding_batch_name + list(adata.obs['batch_name'])
             embedding_species_id = embedding_species_id + list(adata.obs['species_id'])
             if 'annotation' in adata.obs and 'embedding_annotation' in locals():
                 embedding_annotation = embedding_annotation + list(adata.obs['annotation'])
-            
+
         k += 1
-        # Visualize UMAP of each species
-        
-        sc.pp.neighbors(adata, n_neighbors=20, use_rep=key_umap, metric='cosine',  random_state=666)
+
+        sc.pp.neighbors(adata, n_neighbors=20, use_rep=key_umap, metric='cosine', random_state=666)
         sc.tl.louvain(adata, random_state=666, key_added="louvain", resolution=0.5)
         sc.tl.umap(adata, min_dist=1, random_state=666)
         plt.rcParams['font.sans-serif'] = "Arial"
         plt.rcParams["figure.figsize"] = (3, 3)
         plt.rcParams['font.size'] = 10
         if 'annotation' in adata.obs:
-            sc.pl.umap(adata, color=['batch_name', 'louvain', 'annotation'], ncols=3, wspace=0.7, show=True)
+            sc.pl.umap(adata, color=['batch_name', 'louvain', 'annotation'],
+                       ncols=3, wspace=0.7, show=True)
         else:
-            sc.pl.umap(adata, color=['batch_name', 'louvain'], ncols=3, wspace=0.7, show=True)
-            
-    
-    adata_embedding = ad.AnnData(X = embedding_X, obs=embedding_obs_name)
+            sc.pl.umap(adata, color=['batch_name', 'louvain'],
+                       ncols=3, wspace=0.7, show=True)
+
+    adata_embedding = ad.AnnData(X=embedding_X,
+                                  obs=pd.DataFrame(index=embedding_obs_name))
     adata_embedding.obsm['spatial'] = embedding_spatial
     adata_embedding.obs['slice_name'] = embedding_slice_name
     adata_embedding.obs['batch_name'] = embedding_batch_name
     adata_embedding.obs['species_id'] = embedding_species_id
     if 'annotation' in adata.obs and 'embedding_annotation' in locals():
         adata_embedding.obs['annotation'] = embedding_annotation
-    
-    sc.pp.neighbors(adata_embedding,  n_neighbors=20, use_rep='X', metric='cosine',  random_state=666)
+
+    sc.pp.neighbors(adata_embedding, n_neighbors=20, use_rep='X', metric='cosine', random_state=666)
     sc.tl.louvain(adata_embedding, random_state=666, key_added="louvain", resolution=0.5)
-    
+
     print(adata_embedding.X.shape)
 
     sc.tl.umap(adata_embedding, min_dist=1, random_state=666)
 
-    species_ids = list(adata_dict.keys())
-    
-    species_color = ['#e64b35', '#4dbbd5', '#00a087', '#f39b7f', '#3c5488']#['#4778FA', '#8A1C62', '#ED7A43'] #['#ff7f0e', '#1f77b4']
     species_color_dict = dict(zip(species_ids, species_color))
     adata_embedding.uns['species_colors'] = [species_color_dict[x] for x in adata_embedding.obs.species_id]
-    
+
     plt.rcParams['font.sans-serif'] = "Arial"
-    #plt.rcParams["figure.figsize"] = (3, 3)
     plt.rcParams['font.size'] = 10
     if 'annotation' in adata.obs and 'embedding_annotation' in locals():
-        sc.pl.umap(adata_embedding, color=['species_id', 'batch_name', 'louvain', 'annotation'], ncols=2, wspace=0.5, show=True)
+        sc.pl.umap(adata_embedding,
+                   color=['species_id', 'batch_name', 'louvain', 'annotation'],
+                   ncols=2, wspace=0.5, show=True)
     else:
-        sc.pl.umap(adata_embedding, color=['species_id', 'batch_name', 'louvain'], ncols=2, wspace=0.5, show=True)
+        sc.pl.umap(adata_embedding,
+                   color=['species_id', 'batch_name', 'louvain'],
+                   ncols=2, wspace=0.5, show=True)
 
     if 'annotation' in adata.obs and 'embedding_annotation' in locals():
-        fig, axes = plt.subplots(len(species_ids), 1,  figsize=(5, 4*len(species_ids))) #, dpi=500
-        for i in range(len(species_ids)):
-            species_id = species_ids[i]
-            adata_mh = adata_embedding[adata_embedding.obs['species_id'].isin([species_id])]
-            color_list = sns.color_palette(cc.glasbey, n_colors=len(adata_mh.obs['annotation'].unique()))
-            region_list = [x for x in Counter(adata_mh.obs['annotation']).keys()]
-            palette = {k:v for k,v in zip(region_list, color_list)}
+        fig, axes = plt.subplots(n_species, 1, figsize=(5, 4 * n_species))
+        if n_species == 1:
+            axes = [axes]
+        for i, species_id in enumerate(species_ids):
+            adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
+            unique_annot = adata_mh.obs['annotation'].unique()
+            color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
+            palette = dict(zip(unique_annot, color_list))
             ax = sc.pl.umap(adata_embedding, show=False, ax=axes[i])
-            sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, legend_loc='on data', palette=palette)
+            sc.pl.umap(adata_mh, color='annotation', ax=ax, wspace=0.5,
+                       show=False, legend_loc='on data', palette=palette)
         plt.show()
-    
-        fig, axes = plt.subplots(len(species_ids), 1,  figsize=(5, 4*len(species_ids))) #, dpi=500
-        for i in range(len(species_ids)):
-            species_id = species_ids[i]
-            adata_mh = adata_embedding[adata_embedding.obs['species_id'].isin([species_id])]
-            color_list = sns.color_palette(cc.glasbey, n_colors=len(adata_mh.obs['annotation'].unique()))
-            region_list = [x for x in Counter(adata_mh.obs['annotation']).keys()]
-            palette = {k:v for k,v in zip(region_list, color_list)}
+
+        fig, axes = plt.subplots(n_species, 1, figsize=(5, 4 * n_species))
+        if n_species == 1:
+            axes = [axes]
+        for i, species_id in enumerate(species_ids):
+            adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
+            unique_annot = adata_mh.obs['annotation'].unique()
+            color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
+            palette = dict(zip(unique_annot, color_list))
             ax = sc.pl.umap(adata_embedding, show=False, ax=axes[i])
-            sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, legend_loc='right margin', palette=palette)
+            sc.pl.umap(adata_mh, color='annotation', ax=ax, wspace=0.5,
+                       show=False, legend_loc='right margin', palette=palette)
         plt.show()
+
     return None
 
 
 ## Light version of STACAME without GAN loss and auxiliary model
-def train_STACAME(adata_species_dict, 
-                  triplet_ind_species_dict, 
+def train_STACAME(adata_species_dict,
+                  triplet_ind_species_dict,
                   edge_ndarray_species,
-                  triplet_ind_sections_dict = None, 
-                  edge_ndarray_sections = None,
-                  hidden_dims=[512, 30], 
-                  stagate_epoch=500, 
-                  n_epochs=1000,  
-                  n_epochs_species=2000,  
-                  lr=0.001, 
+                  triplet_ind_sections_dict=None,
+                  edge_ndarray_sections=None,
+                  hidden_dims=[512, 30],
+                  stagate_epoch=500,
+                  n_epochs_species=2000,
+                  lr=0.001,
                   key_added='STACAME',
-                  gradient_clipping=5., 
-                  weight_decay=0.0001, 
-                  lr_wd=0.001, 
+                  gradient_clipping=5.,
+                  weight_decay=0.0001,
+                  lr_wd=0.001,
                   weight_decay_wd=5e-4,
-                  margin=1.0, 
-                  margin_species=1.0, 
-                  lr_species = 0.001,
-                  alpha=1, 
+                  margin=1.0,
+                  margin_species=1.0,
+                  lr_species=0.001,
                   beta=1,
                   verbose=False,
-                  random_seed=666, 
-                  iter_comb=None, 
-                  knn_neigh=100, 
-                  device=torch.device('cuda:2' if torch.cuda.is_available() else 'cpu'), 
-                  pretrain_device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'), 
-                  mse_beta = 1, 
-                  tri_beta = 1, 
-                  mmd_beta = 2, 
-                  mmd_batch_size = 4000, 
-                  if_knn_mnn_graph = True, 
-                  if_integrate_within_species = False, 
-                  if_return_loss = False):
+                  random_seed=666,
+                  iter_comb=None,
+                  knn_neigh=100,
+                  device=torch.device('cuda:2' if torch.cuda.is_available() else 'cpu'),
+                  pretrain_device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
+                  mse_beta=1,
+                  tri_beta=1,
+                  mmd_beta=2,
+                  mmd_batch_size=4000,
+                  if_knn_mnn_graph=True,
+                  if_integrate_within_species=False,
+                  if_return_loss=False):
     """
-    Train graph attention auto-encoder and utilize cross-species spot triplets
-    for cross-species batch integration in latent embedding space.
+    Train a graph-attention autoencoder and align cross-species spots via
+    triplet constraints in the latent embedding space.
+
+    The function first pretrains a STAGATE model for each species individually.
+    Then, a joint decoder is trained on the concatenated latent representations
+    using MSE reconstruction loss, cross-species triplet margin loss, optional
+    within-species slice triplet loss, and a maximum mean discrepancy (MMD) term
+    that encourages mixing of species in the latent space.
 
     Parameters
     ----------
-    adata_species_dict : dict
-        Dictionary contains AnnData object of each species.
+    adata_species_dict : dict of {str: anndata.AnnData}
+        Dictionary mapping species names to AnnData objects. Each object must
+        have ``.X`` (dense or sparse), ``.obs['batch_name']``, ``.uns['edgeList']``,
+        and optionally ``.var['highly_variable']`` or ``.uns['highly_variable']``.
     triplet_ind_species_dict : dict
-        Cross-species anchor/positive/negative triplet index.
+        Cross-species triplet indices with keys ``'anchor_ind_species'``,
+        ``'positive_ind_species'``, ``'negative_ind_species'``. Each value is
+        a 1D array of indices into the concatenated spot order.
     edge_ndarray_species : np.ndarray
-        Cross-species MNN graph edge index.
+        Cross-species mutual nearest neighbour (MNN) graph edges, shape (2, n_edges).
     triplet_ind_sections_dict : dict, optional
-        Within-species slice-level triplet index.
+        Within-species slice-level triplet indices with analogous keys
+        ``'anchor_ind_sections'``, ``'positive_ind_sections'``,
+        ``'negative_ind_sections'``. Required if ``if_integrate_within_species``
+        is True.
     edge_ndarray_sections : np.ndarray, optional
-        Within-species slice MNN graph edge index.
-    hidden_dims : list
-        MLP hidden dimension of encoder and decoder.
-    stagate_epoch : int | dict
-        Pre-training epoch for single species STAGATE.
-    n_epochs : int
-        General training epoch (reserved).
-    n_epochs_species : int
-        Total epoch for cross-species STACAME training.
-    lr : float
-        Learning rate for pre-training.
-    key_added : str
-        Key name for storing final embedding in obsm[key_added].
-    gradient_clipping : float
-        Max norm for gradient clipping.
-    weight_decay : float
-        Weight decay for Adam optimizer.
-    margin : float
-        Triplet loss margin for within-species constraint.
-    margin_species : float
-        Triplet loss margin for cross-species constraint.
-    lr_species : float
-        Learning rate for cross-species joint training.
-    alpha, beta : float
-        Loss weight coefficients.
-    verbose : bool
-        Whether print training log every 100 epochs.
-    random_seed : int
-        Global random seed for reproducibility.
-    iter_comb : tuple | None
-        Slice integration order for multi-batch alignment.
-    knn_neigh : int
-        KNN neighbor number for MNN construction.
-    device : torch.device
-        Main GPU device for cross-species training.
-    pretrain_device : torch.device
-        GPU device for single species pre-training.
-    mse_beta, tri_beta, mmd_beta, gan_beta, ot_beta : float
-        Weight for each loss component.
-    gan_epoch : int
-        Iteration number for discriminator update in GAN.
-    mmd_batch_size : int
-        Batch size for MMD calculation.
-    if_knn_mnn_graph : bool
-        Whether add cross-species MNN edges to global graph.
-    if_integrate_within_species : bool
-        Whether enable within-species slice integration.
-    if_return_loss : bool
-        Whether return loss record dictionary.
-    adata_whole : AnnData
-        Whole concatenated AnnData for cross-species MNN search.
-    concate_pca_dim : int
-        PCA dimension for concatenated raw feature input.
+        Within-species slice MNN graph edges, shape (2, n_edges). Required if
+        ``if_integrate_within_species`` and ``if_knn_mnn_graph`` are both True.
+    hidden_dims : list of int, optional
+        Hidden layer dimensions for the encoder and decoder. The first element
+        is the dimension after the input layer, the second is the bottleneck
+        dimension.
+    stagate_epoch : int or dict, optional
+        Number of pretraining epochs per species. If an int, it is used for all
+        species; if a dict, it must map species names to epoch counts.
+    n_epochs_species : int, optional
+        Number of epochs for the cross-species joint training phase.
+    lr : float, optional
+        Learning rate for the per-species STAGATE pretraining.
+    key_added : str, optional
+        Key under which the final latent embedding is stored in
+        ``adata_species_dict[species].obsm``.
+    gradient_clipping : float, optional
+        Maximum gradient norm for clipping during joint training.
+    weight_decay : float, optional
+        Weight decay for the Adam optimiser during pretraining.
+    lr_wd : float, optional
+        (Unused in this light version; kept for compatibility.)
+    weight_decay_wd : float, optional
+        (Unused in this light version; kept for compatibility.)
+    margin : float, optional
+        Margin for the within-species slice triplet loss.
+    margin_species : float, optional
+        Margin for the cross-species triplet loss.
+    lr_species : float, optional
+        Learning rate for the joint cross-species training phase.
+    beta : float, optional
+        Weight of the within-species slice triplet loss in the total loss
+        (only active when ``if_integrate_within_species==True``).
+    verbose : bool, optional
+        If True, log training progress every 100 epochs.
+    random_seed : int, optional
+        Random seed for reproducibility.
+    iter_comb : tuple or None, optional
+        (Reserved for multi-batch ordering; unused in the light version.)
+    knn_neigh : int, optional
+        Number of nearest neighbours used when constructing MNN graphs.
+    device : torch.device, optional
+        Device for the cross-species training.
+    pretrain_device : torch.device, optional
+        Device for the per-species pretraining.
+    mse_beta : float, optional
+        Weight of the MSE reconstruction loss.
+    tri_beta : float, optional
+        Weight of the cross-species triplet loss.
+    mmd_beta : float, optional
+        Weight of the MMD loss.
+    mmd_batch_size : int, optional
+        Batch size used for MMD computation.
+    if_knn_mnn_graph : bool, optional
+        If True, add cross-species MNN edges to the combined adjacency graph.
+    if_integrate_within_species : bool, optional
+        If True, enable within-species slice integration using additional
+        triplet constraints.
+    if_return_loss : bool, optional
+        If True, return a dictionary recording loss values over epochs.
 
     Returns
     -------
     adata_species_dict : dict
-        Updated dict with STACAME embedding in obsm[key_added].
+        The input dictionary with the final embedding stored in
+        ``obsm[key_added]`` for each species.
     loss_dict : dict, optional
-        Loss record, returned if if_return_loss=True.
+        Only returned if ``if_return_loss=True``. Contains keys:
+        ``'Loss name'``, ``'Epoch'``, ``'Loss value'``, each a list of
+        recorded values at every epoch.
     """
 
-    # seed_everything()
+    # ---------- Reproducibility and GPU cleanup ----------
     import gc
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -348,20 +443,20 @@ def train_STACAME(adata_species_dict,
     torch.cuda.manual_seed(seed)
     random.seed(seed)
     torch.backends.cudnn.enabled = True
-    
+
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
     torch.use_deterministic_algorithms(True)
 
+    # Allow species-specific pretraining epochs if a dict is provided
     if not isinstance(stagate_epoch, dict):
-        stagate_epoch_dict = {k:stagate_epoch for k in adata_species_dict.keys()}
+        stagate_epoch_dict = {k: stagate_epoch for k in adata_species_dict.keys()}
     else:
         stagate_epoch_dict = stagate_epoch
-    
-    # Initializing the hidden units, model and optimizer dicts
-    z_dict = {k:0 for k in adata_species_dict.keys()}
-    # Train a STAGATE model for each species
+
+    # ---------- Per-species STAGATE pretraining ----------
+    z_dict = {k: 0 for k in adata_species_dict.keys()}
     species_order = 0
     for species_id, adata in adata_species_dict.items():
         section_ids = np.array(adata.obs['batch_name'].unique())
@@ -369,16 +464,18 @@ def train_STACAME(adata_species_dict,
         if 'highly_variable' in adata.var.columns:
             adata = adata[:, adata.uns['highly_variable']]
         print(f'For {species_id}, using {len(adata.var_names)} genes for training.')
+        # Convert to PyG Data object
         data = Data(edge_index=torch.LongTensor(np.array([edgeList[0], edgeList[1]])),
                     prune_edge_index=torch.LongTensor(np.array([])),
                     x=torch.FloatTensor(adata.X.todense()))
         data = data.to(pretrain_device)
 
         if species_order == 0:
+            # Instantiate the STAGATE model (encoder + decoder)
             model = STACAME.STACAME(hidden_dims=[data.x.shape[1], hidden_dims[0], hidden_dims[1]]).to(pretrain_device)
             optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
         species_order += 1
-    
+
         print('Pretrain with STAGATE_multiple...')
         for epoch in tqdm(range(0, stagate_epoch_dict[species_id])):
             model.train()
@@ -388,13 +485,14 @@ def train_STACAME(adata_species_dict,
             loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.)
             optimizer.step()
-        print(f'mse loss = {loss.item()}')
+        print(f'mse loss = {loss.item():.4f}')
+        # Store the pretrained latent representations
         with torch.no_grad():
             z, _ = model(data.x, data.edge_index)
-        # Update the save hidden units
         adata_species_dict[species_id].obsm['STAGATE'] = z.cpu().detach().numpy()
         z_dict[species_id] = z.cpu().detach()
 
+        # Free memory after the last species is pretrained
         if species_order >= len(adata_species_dict.keys()):
             del model, optimizer, data, z, out
             if torch.cuda.is_available():
@@ -406,13 +504,16 @@ def train_STACAME(adata_species_dict,
     anchor_ind_species = triplet_ind_species_dict['anchor_ind_species']
     positive_ind_species = triplet_ind_species_dict['positive_ind_species']
     negative_ind_species = triplet_ind_species_dict['negative_ind_species']
-    ##########################################-Cross Species####################################################
+
+    # ---------- Build concatenated graph and feature matrix ----------
+    # Compute offsets for spot indices from different species
     k_add = 0
-    species_add_dict = {k:None for k in z_dict.keys()}
+    species_add_dict = {k: None for k in z_dict.keys()}
     for species_id in z_dict.keys():
         species_add_dict[species_id] = int(k_add)
-        k_add = int(k_add+adata_species_dict[species_id].n_obs)
-    
+        k_add = int(k_add + adata_species_dict[species_id].n_obs)
+
+    # Concatenate within-species edges
     adata = adata_species_dict[list(adata_species_dict.keys())[0]]
     edgeList = adata.uns['edgeList']
     edge_ndarray = np.array([edgeList[0], edgeList[1]])
@@ -426,27 +527,28 @@ def train_STACAME(adata_species_dict,
         else:
             S = S + 1
     edge_ndarray_species = np.array([edge_ndarray_species[0], edge_ndarray_species[1]])
-    
-    # Choose whether build the knn and mnn cross species neigbors into the graph
-    if if_knn_mnn_graph == True:
+
+    # Optionally include cross-species MNN edges in the graph
+    if if_knn_mnn_graph:
         edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_species), axis=1)
+
+    # Concatenate pretrained latent vectors
     S = 0
     for species_id, z_input in z_dict.items():
-        if S==0:
+        if S == 0:
             X = z_dict[species_id].cpu().detach().numpy()
         else:
             X = np.concatenate((X, z_dict[species_id].cpu().detach().numpy()), axis=0)
         S = S + 1
-    # ---------------------------Init graph-----------------------------
+
+    # ---------- Prepare original gene expression for MSE loss ----------
     print('Pretrain with STAGATE_multiple...')
-    #----------------------------Create model------------------------------
     print('Train with cross species STACAME...')
     cosine_loss = torch.nn.CosineEmbeddingLoss(reduction='mean')
     L1_loss = torch.nn.HuberLoss()
     z = torch.FloatTensor(X)
-    # Merge X and get cross-species features
-    #-------------------------------------------------------
-    # 记录每个物种的基因位置，用于后续拆分
+
+    # Record per-species gene ranges to split the output (optional for later use)
     species_gene_ranges = {}
     current_gene_idx = 0
     S = 0
@@ -455,7 +557,7 @@ def train_STACAME(adata_species_dict,
             sub_adata = adata[:, adata.uns['highly_variable']]
         else:
             sub_adata = adata
-        
+
         x = sub_adata.X.todense()
         n_genes = x.shape[1]
         species_gene_ranges[species_id] = (current_gene_idx, current_gene_idx + n_genes)
@@ -467,84 +569,103 @@ def train_STACAME(adata_species_dict,
             merge_X = x
             S = S + 1
     merge_X = torch.FloatTensor(merge_X).to(device)
-    ##-----------------------------------------------------------
+
+    # ---------- Joint decoder and optimiser ----------
     model = STACAME.STACAME_Decoder(hidden_dims=[merge_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr_species, weight_decay=weight_decay)
 
-    if if_integrate_within_species == True:
+    # Optionally add within-species slice edges and triplet indices
+    if if_integrate_within_species:
         anchor_ind_sections = triplet_ind_sections_dict['anchor_ind_sections']
         positive_ind_sections = triplet_ind_sections_dict['positive_ind_sections']
         negative_ind_sections = triplet_ind_sections_dict['negative_ind_sections']
-        if if_knn_mnn_graph == True:
+        if if_knn_mnn_graph:
             edge_ndarray_sections = np.array([edge_ndarray_sections[0], edge_ndarray_sections[1]])
             edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_sections), axis=1)
-            data = Data(edge_index=torch.LongTensor(edge_ndarray),
+        data = Data(edge_index=torch.LongTensor(edge_ndarray),
                     prune_edge_index=torch.LongTensor(np.array([])), x=z)
-            data = data.to(device)
-        else:
-            data = Data(edge_index=torch.LongTensor(edge_ndarray),
-                prune_edge_index=torch.LongTensor(np.array([])), x=z)
-            data = data.to(device)
+        data = data.to(device)
     else:
         data = Data(edge_index=torch.LongTensor(edge_ndarray),
-            prune_edge_index=torch.LongTensor(np.array([])), x=z)
+                    prune_edge_index=torch.LongTensor(np.array([])), x=z)
         data = data.to(device)
 
     if if_return_loss:
-        loss_dict = {'Loss name':[], 'Epoch':[], 'Loss value':[]}
+        loss_dict = {'Loss name': [], 'Epoch': [], 'Loss value': []}
 
     plot_epoch = n_epochs_species // 3
     scheduler = StepLR(optimizer, step_size=1000, gamma=1)
-    
+
+    # ---------- Cross-species training loop ----------
     for epoch in tqdm(range(0, n_epochs_species)):
         current_seed = random_seed + epoch
         random.seed(current_seed)
         np.random.seed(current_seed)
         torch.manual_seed(current_seed)
-        # subsampling anchor, positive, and negative
+
+        # Update per-species latent arrays in adata (inplace for downstream analysis)
         k_add = 0
         for species_id in z_dict.keys():
             species_add_dict[species_id] = int(k_add)
-            adata_species_dict[species_id].obsm['STAGATE'] = z[k_add:int(k_add+adata_species_dict[species_id].n_obs), :].cpu().detach().numpy()
+            adata_species_dict[species_id].obsm['STAGATE'] = z[k_add:int(k_add + adata_species_dict[species_id].n_obs),
+                                                             :].cpu().detach().numpy()
             z_dict[species_id] = adata_species_dict[species_id].obsm['STAGATE']
             k_add = int(k_add + adata_species_dict[species_id].n_obs)
 
         model.train()
         optimizer.zero_grad()
         z, out = model(data.x, data.edge_index)
+
+        # 1) MSE reconstruction loss on the original gene expression
         mse_loss = F.mse_loss(merge_X, out)
-        if if_integrate_within_species == True:
+
+        # 2) Within-species slice triplet loss (optional)
+        if if_integrate_within_species:
             anchor_arr = z[anchor_ind_sections,]
             positive_arr = z[positive_ind_sections,]
             negative_arr = z[negative_ind_sections,]
             triplet_loss = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
             tri_output = triplet_loss(anchor_arr, positive_arr, negative_arr)
         else:
-            pass
+            tri_output = torch.tensor(0.0, device=device)
+
+        # 3) Cross-species triplet loss
         anchor_arr_species = z[anchor_ind_species,]
         positive_arr_species = z[positive_ind_species,]
         negative_arr_species = z[negative_ind_species,]
         triplet_loss_species = torch.nn.TripletMarginLoss(margin=margin_species, p=2, reduction='mean')
         tri_output_species = triplet_loss_species(anchor_arr_species, positive_arr_species, negative_arr_species)
+
+        # 4) Maximum mean discrepancy (MMD) loss to mix species in latent space
         mmd_loss = STACAME.MMDLoss(kernel=STACAME.RBF(device=device), device=device).to(device)
         mmd_loss_sum = 0
         for species_id in z_dict.keys():
             k_add = species_add_dict[species_id]
-            remain_list = list(set(list(range(z.shape[0]))) - set(range(k_add,int(k_add+adata_species_dict[species_id].n_obs))))
+            remain_list = list(
+                set(list(range(z.shape[0]))) - set(range(k_add, int(k_add + adata_species_dict[species_id].n_obs))))
             random.seed(epoch)
-            ind_1 = random.sample(list(range(k_add, int(k_add+adata_species_dict[species_id].n_obs))), mmd_batch_size)
+            ind_1 = random.sample(list(range(k_add, int(k_add + adata_species_dict[species_id].n_obs))), mmd_batch_size)
             ind_2 = random.sample(remain_list, mmd_batch_size)
-            mmd_loss_sum = mmd_loss_sum +  mmd_loss(z[ind_1, ].to(device), z[ind_2, ].to(device)).to(device)
+            mmd_loss_sum = mmd_loss_sum + mmd_loss(z[ind_1,].to(device), z[ind_2,].to(device)).to(device)
+
         sampling_num_spe = anchor_arr_species.shape[0]
 
-        if if_integrate_within_species == True:     
-            loss =  mse_beta * mse_loss  + tri_beta * tri_output_species + beta * tri_output + mmd_beta * mmd_loss_sum
+        # Combine losses with weights
+        if if_integrate_within_species:
+            loss = (mse_beta * mse_loss
+                    + tri_beta * tri_output_species
+                    + beta * tri_output
+                    + mmd_beta * mmd_loss_sum)
         else:
-            loss =  mse_beta * mse_loss  + tri_beta * tri_output_species + mmd_beta * mmd_loss_sum
+            loss = (mse_beta * mse_loss
+                    + tri_beta * tri_output_species
+                    + mmd_beta * mmd_loss_sum)
+
         loss.backward(retain_graph=True)
         optimizer.step()
         scheduler.step()
 
+        # ---------- Record losses ----------
         if if_return_loss:
             loss_dict['Loss name'].append('Loss sum')
             loss_dict['Epoch'].append(epoch)
@@ -558,44 +679,55 @@ def train_STACAME(adata_species_dict,
             loss_dict['Loss name'].append('MMD')
             loss_dict['Epoch'].append(epoch)
             loss_dict['Loss value'].append(mmd_loss_sum.item())
-        if verbose == True and epoch % 100 == 0:
-            print(f'---------------------------------Epoch {epoch}-----------------------------------')
-            print(f'Total loss: {loss.item()}')
-            print(
-                f'MSE:{mse_beta * mse_loss.item()}, Cross species triplets:{tri_beta * tri_output_species.item()}, '
-                f'MMD:{mmd_beta * mmd_loss_sum.item()}')
-            current_lr = scheduler.get_last_lr()[0]
-            print(f"Epoch {epoch}, LR: {current_lr:.6f}")
-            if if_integrate_within_species == True:
-                print(f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(sampling_num_spe).to(device)).item()}, Cross slices triplets: {tri_output.item()}')
+
+        # ---------- Logging ----------
+        if verbose and epoch % 100 == 0:
+            # Compute cosine similarity for monitoring (does not affect training)
+            cos_sim = cosine_loss(anchor_arr_species, positive_arr_species,
+                                  torch.ones(sampling_num_spe).to(device)).item()
+            print(f'---------------------------------Epoch {epoch:4d}-----------------------------------')
+            print(f'Total loss: {loss.item():.4f}',
+                  f'MSE (weighted) : {mse_beta * mse_loss.item():.4f}',
+                  f'Cross-species Tri: {tri_beta * tri_output_species.item():.4f}',
+                  f'MMD (weighted): {mmd_beta * mmd_loss_sum.item():.4f}')
+            if if_integrate_within_species:
+                print(f'Cross-slices Tri: {beta * tri_output.item():.4f}',
+                      f'Cosine sim (mon.): {cos_sim:.4f}')
                 if if_return_loss:
                     loss_dict['Loss name'].append('Cross-slices triplet')
                     loss_dict['Epoch'].append(epoch)
                     loss_dict['Loss value'].append(tri_output.item())
-            else:
-                print(f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(sampling_num_spe).to(device)).item()}')
+            current_lr = scheduler.get_last_lr()[0]
+            print(f'  Learning rate     : {current_lr:.6f}')
+
         torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+
+        # Update the final embedding in adata objects
         for species_id in z_dict.keys():
             k_add = species_add_dict[species_id]
-            adata_species_dict[species_id].obsm[key_added] = z[k_add:int(k_add+adata_species_dict[species_id].n_obs), :].cpu().detach().numpy()
+            adata_species_dict[species_id].obsm[key_added] = z[k_add:int(k_add + adata_species_dict[species_id].n_obs),
+                                                             :].cpu().detach().numpy()
+
+        # Periodic UMAP visualisation
         if epoch % plot_epoch == 0 and n_epochs_species - epoch >= plot_epoch:
             if z.shape[0] >= 50000:
-                clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate = 0.1)
+                clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate=0.1)
             else:
                 clustering_umap(adata_species_dict, key_umap=key_added)
 
     print('Clustering and UMAP of Cross Species STACAME:')
     if z.shape[0] >= 50000:
-        clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate = 0.1)
+        clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate=0.1)
     else:
         clustering_umap(adata_species_dict, key_umap=key_added)
 
-    # ===================== Save results =====================
+    # ---------- Finalise and cleanup ----------
     with torch.no_grad():
         z_final, out_final = model(data.x, data.edge_index)
         out_np = out_final.cpu().detach().numpy()
-    # ==================================================================================
-    del model,  optimizer, data
+    # (out_np can be used for downstream analysis if needed)
+
+    del model, optimizer, data
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
@@ -603,6 +735,8 @@ def train_STACAME(adata_species_dict,
     if if_return_loss:
         return adata_species_dict, loss_dict
     return adata_species_dict
+
+
 
 
 ## Standard version of STACAME with GAN loss and auxiliary model
@@ -628,7 +762,7 @@ def train_STACAME_GAN(adata_species_dict,
                       random_seed=666,
                       iter_comb=None,
                       knn_neigh=10,
-                      device=torch.device('cuda:2' if torch.cuda.is_available() else 'cpu'),
+                      device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
                       pretrain_device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
                       mse_beta=1,
                       tri_beta=1,
@@ -642,85 +776,116 @@ def train_STACAME_GAN(adata_species_dict,
                       if_return_loss=False,
                       adata_whole=None, concate_pca_dim=40):
     """
-    Train graph attention auto-encoder and utilize cross-species spot triplets
-    for cross-species batch integration in latent embedding space.
+    Train a graph-attention auto-encoder with GAN-based domain confusion
+    and an auxiliary model for cross-species spatial transcriptomics integration.
+
+    Compared to the light version, this standard version additionally includes:
+      - A multi-class discriminator (domain classifier) that adversarially
+        encourages species mixing in the latent space (GAN loss).
+      - An auxiliary model sharing the same architecture, trained jointly with
+        its own discriminator to provide a complementary alignment signal.
+      - Optional unbalanced optimal transport (OT) loss between batches.
+
+    The training proceeds in two stages:
+      1. Per-species STAGATE pretraining (with optional within-species triplet updates).
+      2. Joint cross-species training with MSE, triplet, MMD, GAN, and OT losses.
 
     Parameters
     ----------
-    adata_species_dict : dict
-        Dictionary contains AnnData object of each species.
+    adata_species_dict : dict of {str: anndata.AnnData}
+        Dictionary mapping species names to AnnData objects. Each object must
+        contain ``.X``, ``.obs['batch_name']``, ``.uns['edgeList']``, and
+        optionally ``.var['highly_variable']`` or ``.uns['highly_variable']``.
     triplet_ind_species_dict : dict
-        Cross-species anchor/positive/negative triplet index.
+        Cross-species triplet indices with keys ``'anchor_ind_species'``,
+        ``'positive_ind_species'``, ``'negative_ind_species'``.
     edge_ndarray_species : np.ndarray
-        Cross-species MNN graph edge index.
+        Cross-species MNN graph edge array, shape (2, n_edges).
     triplet_ind_sections_dict : dict, optional
-        Within-species slice-level triplet index.
+        Within-species slice-level triplet indices with analogous keys.
     edge_ndarray_sections : np.ndarray, optional
-        Within-species slice MNN graph edge index.
+        Within-species slice MNN graph edges.
     hidden_dims : list
-        MLP hidden dimension of encoder and decoder.
-    stagate_epoch : int | dict
-        Pre-training epoch for single species STAGATE.
+        Hidden layer dimensions: [encoder_output_dim, bottleneck_dim].
+    stagate_epoch : int or dict
+        Number of pretraining epochs per species. If an int, used for all;
+        if a dict, maps species names to epoch counts.
     n_epochs_species : int
-        Total epoch for cross-species STACAME training.
+        Total number of epochs for the cross-species joint training phase.
     lr : float
-        Learning rate for pre-training.
+        Learning rate for the per-species pretraining.
     key_added : str
-        Key name for storing final embedding in obsm[key_added].
+        Key under which the final latent embedding is stored in
+        ``adata_species_dict[species].obsm``.
     gradient_clipping : float
-        Max norm for gradient clipping.
+        Max gradient norm for clipping during joint training.
     weight_decay : float
-        Weight decay for Adam optimizer.
+        Weight decay for the pretraining optimizer.
+    lr_wd : float
+        (Unused; kept for compatibility.)
+    weight_decay_wd : float
+        (Unused; kept for compatibility.)
     margin : float
-        Triplet loss margin for within-species constraint.
+        Triplet loss margin for the within-species slice constraint.
     margin_species : float
-        Triplet loss margin for cross-species constraint.
+        Triplet loss margin for the cross-species constraint.
     lr_species : float
-        Learning rate for cross-species joint training.
-    alpha, beta : float
-        Loss weight coefficients.
+        Learning rate for the cross-species joint training phase.
+    beta : float
+        Weight of the within-species slice triplet loss in the total loss.
     verbose : bool
-        Whether print training log every 100 epochs.
+        If True, print a detailed loss breakdown every 100 epochs.
     random_seed : int
-        Global random seed for reproducibility.
-    iter_comb : tuple | None
-        Slice integration order for multi-batch alignment.
+        Random seed for reproducibility.
+    iter_comb : tuple or None
+        Order of slice integration for within-species MNN construction.
     knn_neigh : int
-        KNN neighbor number for MNN construction.
+        Number of nearest neighbours for MNN graph construction.
     device : torch.device
-        Main GPU device for cross-species training.
+        Device for the cross-species training.
     pretrain_device : torch.device
-        GPU device for single species pre-training.
-    mse_beta, tri_beta, mmd_beta, gan_beta, ot_beta : float
-        Weight for each loss component.
+        Device for the per-species pretraining.
+    mse_beta : float
+        Weight of the MSE reconstruction loss.
+    tri_beta : float
+        Weight of the combined triplet loss (auxiliary + cross-species).
+    mmd_beta : float
+        Weight of the MMD loss.
+    gan_beta : float
+        Weight of the GAN domain confusion loss.
     gan_epoch : int
-        Iteration number for discriminator update in GAN.
+        Number of discriminator update steps per generator step.
+    ot_beta : float
+        Weight of the optional optimal transport loss (0 to disable).
     mmd_batch_size : int
-        Batch size for MMD calculation.
+        Batch size used for MMD computation.
     if_knn_mnn_graph : bool
-        Whether add cross-species MNN edges to global graph.
+        Whether to add cross-species MNN edges to the graph.
     if_integrate_within_species : bool
-        Whether enable within-species slice integration.
+        Whether to enable within-species slice integration.
     if_return_loss : bool
-        Whether return loss record dictionary.
-    adata_whole : AnnData
-        Whole concatenated AnnData for cross-species MNN search.
+        If True, return a dictionary recording loss values over epochs.
+    adata_whole : anndata.AnnData
+        Concatenated AnnData object across all species for MNN search
+        and domain labels during training.
     concate_pca_dim : int
-        PCA dimension for concatenated raw feature input.
+        PCA dimension to which merged gene expression is reduced before
+        feeding to the decoder.
 
     Returns
     -------
     adata_species_dict : dict
-        Updated dict with STACAME embedding in obsm[key_added].
+        Updated dictionary with final embedding in ``obsm[key_added]``.
     loss_dict : dict, optional
-        Loss record, returned if if_return_loss=True.
+        Only returned when ``if_return_loss=True``. Keys: ``'Loss name'``,
+        ``'Epoch'``, ``'Loss value'``.
     """
     import gc
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
 
-    # seed_everything()
+    # ---------- Set all random seeds for reproducibility ----------
     seed = random_seed
     import random
     random.seed(seed)
@@ -743,14 +908,14 @@ def train_STACAME_GAN(adata_species_dict,
 
     torch.use_deterministic_algorithms(True)
 
+    # Allow per-species pretraining epochs via dict
     if not isinstance(stagate_epoch, dict):
         stagate_epoch_dict = {k: stagate_epoch for k in adata_species_dict.keys()}
     else:
         stagate_epoch_dict = stagate_epoch
 
-    # Initializing the hidden units, model and optimizer dicts
+    # ---------- Per-species STAGATE pretraining ----------
     z_dict = {k: 0 for k in adata_species_dict.keys()}
-    # Train a STAGATE model for each species
     species_order = 0
     for species_id, adata in adata_species_dict.items():
         section_ids = np.array(adata.obs['batch_name'].unique())
@@ -759,12 +924,14 @@ def train_STACAME_GAN(adata_species_dict,
             adata = adata[:, adata.uns['highly_variable']]
         print(f'For {species_id}, using {len(adata.var_names)} genes for training.')
 
+        # Build PyG Data object for the species
         data = Data(edge_index=torch.LongTensor(np.array([edgeList[0], edgeList[1]])),
                     prune_edge_index=torch.LongTensor(np.array([])),
                     x=torch.FloatTensor(adata.X.todense()))
         data = data.to(pretrain_device)
 
         if species_order == 0:
+            # Instantiate STAGATE model (shared across species)
             model = STACAME.STACAME(hidden_dims=[data.x.shape[1], hidden_dims[0], hidden_dims[1]]).to(pretrain_device)
             optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -775,6 +942,7 @@ def train_STACAME_GAN(adata_species_dict,
             optimizer.zero_grad()
             z, out = model(data.x, data.edge_index)
 
+            # If within-species integration is on, periodically refresh triplets
             if if_integrate_within_species:
                 if epoch % 10 == 0 and epoch >= 500:
                     if verbose:
@@ -821,25 +989,22 @@ def train_STACAME_GAN(adata_species_dict,
                 loss = F.mse_loss(data.x.to(pretrain_device), out)
 
             loss.backward(retain_graph=True)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 5.)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
             optimizer.step()
-        print(f'mse loss = {loss.item()}')
+        print(f'Pretrain mse loss = {loss.item():.4f}')
+
+        # Extract and store the pretrained latent representation
         with torch.no_grad():
             z, _ = model(data.x, data.edge_index)
-
         adata_species_dict[species_id].obsm['STAGATE'] = z.cpu().detach().numpy()
         z_dict[species_id] = z.cpu().detach()
 
+        # Clean up after the last species
         if species_order >= len(adata_species_dict.keys()):
             del model, optimizer, data, z, out
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
-        # del model, optimizer, data, z, out
-        # if torch.cuda.is_available():
-        #     torch.cuda.empty_cache()
-        # gc.collect()
-        # ========================================================================
 
     cosine_loss = torch.nn.CosineEmbeddingLoss(reduce=True)
     print('-------------------------------------------------------------------------------')
@@ -847,13 +1012,15 @@ def train_STACAME_GAN(adata_species_dict,
     anchor_ind_species = triplet_ind_species_dict['anchor_ind_species']
     positive_ind_species = triplet_ind_species_dict['positive_ind_species']
     negative_ind_species = triplet_ind_species_dict['negative_ind_species']
-    ##########################################-Cross Species####################################################
+
+    # ---------- Build the concatenated graph ----------
     k_add = 0
     species_add_dict = {k: None for k in z_dict.keys()}
     for species_id in z_dict.keys():
         species_add_dict[species_id] = int(k_add)
         k_add = int(k_add + adata_species_dict[species_id].n_obs)
 
+    # Start with the within-species edges of the first species
     adata = adata_species_dict[list(adata_species_dict.keys())[0]]
     edgeList = adata.uns['edgeList']
     edge_ndarray = np.array([edgeList[0], edgeList[1]])
@@ -868,9 +1035,11 @@ def train_STACAME_GAN(adata_species_dict,
             S = S + 1
     edge_ndarray_species = np.array([edge_ndarray_species[0], edge_ndarray_species[1]])
 
-    # Choose whether build the knn and mnn cross species neigbors into the graph
-    if if_knn_mnn_graph == True:
+    # Optionally include cross-species MNN edges
+    if if_knn_mnn_graph:
         edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_species), axis=1)
+
+    # Concatenate pretrained latent vectors for the primary model input
     S = 0
     for species_id, z_input in z_dict.items():
         if S == 0:
@@ -878,14 +1047,13 @@ def train_STACAME_GAN(adata_species_dict,
         else:
             X = np.concatenate((X, z_dict[species_id].cpu().detach().numpy()), axis=0)
         S = S + 1
-    # ---------------------------Init graph-----------------------------
+
     print('Pretrain with STAGATE_multiple...')
-    # ----------------------------Create model------------------------------
     print('Train with cross species STACAME...')
     cosine_loss = torch.nn.CosineEmbeddingLoss(reduce=True)
     z = torch.FloatTensor(X)
-    # Merge X and get cross-species features
-    # -------------------------------------------------------
+
+    # ---------- Merge raw gene expression and reduce dimensionality with PCA ----------
     S = 0
     for species_id, adata in adata_species_dict.items():
         if S != 0:
@@ -905,19 +1073,22 @@ def train_STACAME_GAN(adata_species_dict,
     sc.pp.scale(adata_X)
     sc.tl.pca(adata_X, n_comps=concate_pca_dim)
     merge_X = adata_X.obsm["X_pca"]
-
     merge_X = torch.FloatTensor(merge_X).to(device)
 
-    ##-----------------------------------------------------------
+    # ---------- Build models and discriminators ----------
     species_ids = list(adata_species_dict.keys())
+    # Primary decoder (receives latent code from the main graph)
     model = STACAME.STACAME_Decoder(hidden_dims=[merge_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
 
+    # Auxiliary model uses raw PCA features as input
     auxiliary_X = torch.FloatTensor(adata_whole.obsm['X_pca'])
     auxiliary_model = STACAME.STACAME(hidden_dims=[auxiliary_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
 
+    # Joint optimizer for both primary decoder and auxiliary model
     optimizer = torch.optim.Adam(list(model.parameters()) + list(auxiliary_model.parameters()), lr=lr_species,
                                  weight_decay=weight_decay)
 
+    # Domain discriminators for adversarial training
     auxiliary_D_Z = STACAME.MultiClassDiscriminator(hidden_dims[1], len(adata_species_dict.keys())).to(device)
     auxiliary_optimizer_D = torch.optim.Adam(list(auxiliary_D_Z.parameters()), lr=0.001, weight_decay=0.001)
     auxiliary_D_Z.train()
@@ -926,29 +1097,28 @@ def train_STACAME_GAN(adata_species_dict,
     optimizer_D = torch.optim.Adam(list(D_Z.parameters()), lr=0.001, weight_decay=0.001)
     D_Z.train()
 
+    # Create ground-truth domain labels for GAN
     species_list = []
     for species_id, adata in adata_species_dict.items():
         species_list = species_list + [species_id] * adata.n_obs
-
     true_dom = torch.LongTensor(pd.Series(species_list).astype('category').cat.codes.values).to(device)
+
+    # Auxiliary data object
     auxiliary_data = Data(edge_index=torch.LongTensor(edge_ndarray),
                           prune_edge_index=torch.LongTensor(np.array([])), x=auxiliary_X)
     auxiliary_data = auxiliary_data.to(device)
 
-    if if_integrate_within_species == True:
+    # ---------- Build joint data object for primary path ----------
+    if if_integrate_within_species:
         anchor_ind_sections = triplet_ind_sections_dict['anchor_ind_sections']
         positive_ind_sections = triplet_ind_sections_dict['positive_ind_sections']
         negative_ind_sections = triplet_ind_sections_dict['negative_ind_sections']
-        if if_knn_mnn_graph == True:
+        if if_knn_mnn_graph:
             edge_ndarray_sections = np.array([edge_ndarray_sections[0], edge_ndarray_sections[1]])
             edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_sections), axis=1)
-            data = Data(edge_index=torch.LongTensor(edge_ndarray),
-                        prune_edge_index=torch.LongTensor(np.array([])), x=z)
-            data = data.to(device)
-        else:
-            data = Data(edge_index=torch.LongTensor(edge_ndarray),
-                        prune_edge_index=torch.LongTensor(np.array([])), x=z)
-            data = data.to(device)
+        data = Data(edge_index=torch.LongTensor(edge_ndarray),
+                    prune_edge_index=torch.LongTensor(np.array([])), x=z)
+        data = data.to(device)
     else:
         data = Data(edge_index=torch.LongTensor(edge_ndarray),
                     prune_edge_index=torch.LongTensor(np.array([])), x=z)
@@ -959,14 +1129,14 @@ def train_STACAME_GAN(adata_species_dict,
 
     plot_epoch = n_epochs_species // 3
 
+    # ---------- Cross-species joint training ----------
     for epoch in tqdm(range(0, n_epochs_species)):
-        # subsampling anchor, positive, and negative
+        # Update per-species latent arrays for tracking
         k_add = 0
         for species_id in z_dict.keys():
             species_add_dict[species_id] = int(k_add)
             adata_species_dict[species_id].obsm['STAGATE'] = z[
                 k_add:int(k_add + adata_species_dict[species_id].n_obs), :].cpu().detach().numpy()
-
             z_dict[species_id] = adata_species_dict[species_id].obsm['STAGATE']
             k_add = int(k_add + adata_species_dict[species_id].n_obs)
         if epoch == 0:
@@ -978,20 +1148,27 @@ def train_STACAME_GAN(adata_species_dict,
         auxiliary_z, auxiliary_out = auxiliary_model(auxiliary_data.x, auxiliary_data.edge_index)
         z, out = model(data.x, data.edge_index)
 
+        # ---- 1) MSE reconstruction loss ----
         mse_loss = F.mse_loss(merge_X, out) + F.mse_loss(auxiliary_data.x, auxiliary_out)
-        if if_integrate_within_species == True:
+
+        # ---- 2) Within-species slice triplet loss (optional) ----
+        if if_integrate_within_species:
             anchor_arr = z[anchor_ind_sections,]
             positive_arr = z[positive_ind_sections,]
             negative_arr = z[negative_ind_sections,]
             triplet_loss = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
             tri_output = triplet_loss(anchor_arr, positive_arr, negative_arr)
         else:
-            pass
+            tri_output = torch.tensor(0.0, device=device)
+
+        # ---- 3) Cross-species triplet loss ----
         anchor_arr_species = z[anchor_ind_species,]
         positive_arr_species = z[positive_ind_species,]
         negative_arr_species = z[negative_ind_species,]
         triplet_loss_species = torch.nn.TripletMarginLoss(margin=margin_species, p=2, reduction='mean')
         tri_output_species = triplet_loss_species(anchor_arr_species, positive_arr_species, negative_arr_species)
+
+        # ---- 4) MMD loss (main + auxiliary) ----
         mmd_loss = STACAME.MMDLoss(kernel=STACAME.RBF(device=device), device=device).to(device)
         mmd_loss_sum = 0
         for species_id in z_dict.keys():
@@ -1001,21 +1178,22 @@ def train_STACAME_GAN(adata_species_dict,
             ind_1 = random.sample(list(range(k_add, int(k_add + adata_species_dict[species_id].n_obs))), mmd_batch_size)
             ind_2 = random.sample(remain_list, mmd_batch_size)
             mmd_loss_sum = mmd_loss_sum + mmd_loss(z[ind_1,].to(device), z[ind_2,].to(device)).to(device)
-            mmd_loss_sum = mmd_loss_sum + mmd_loss(auxiliary_z[ind_1,].to(device), auxiliary_z[ind_2,].to(device)).to(
-                device)
+            mmd_loss_sum = mmd_loss_sum + mmd_loss(auxiliary_z[ind_1,].to(device), auxiliary_z[ind_2,].to(device)).to(device)
 
-            loss_ot = torch.tensor(0.0)
-            if ot_beta != 0:
-                z_A = z[ind_1,].to(device)
-                z_B = z[ind_2,].to(device)
-                x_A = auxiliary_X[ind_1,].to(device)
-                x_B = auxiliary_X[ind_2,].to(device)
-                c_cross = pairwise_correlation_distance(x_A.detach(), x_B.detach()).to(device)
-                T = unbalanced_ot(cost_pp=c_cross, reg=0.05, reg_m=0.5, device=device)
+        # ---- 5) Optional optimal transport loss ----
+        loss_ot = torch.tensor(0.0, device=device)
+        if ot_beta != 0:
+            z_A = z[ind_1,].to(device)
+            z_B = z[ind_2,].to(device)
+            x_A = auxiliary_X[ind_1,].to(device)
+            x_B = auxiliary_X[ind_2,].to(device)
+            c_cross = pairwise_correlation_distance(x_A.detach(), x_B.detach()).to(device)
+            T = unbalanced_ot(cost_pp=c_cross, reg=0.05, reg_m=0.5, device=device)
 
-                z_dist = torch.mean((z_A.view(mmd_batch_size, 1, -1) - z_B.view(1, mmd_batch_size, -1)) ** 2, dim=2)
-                loss_ot = torch.sum(T * z_dist) / torch.sum(T)
+            z_dist = torch.mean((z_A.view(mmd_batch_size, 1, -1) - z_B.view(1, mmd_batch_size, -1)) ** 2, dim=2)
+            loss_ot = torch.sum(T * z_dist) / torch.sum(T)
 
+        # ---- 6) Periodically update cross-species triplets via MNN ----
         sampling_num_spe = anchor_arr_species.shape[0]
         if epoch % 100 == 0:
             mnn_dict = create_dictionary_mnn(adata_whole, use_rep='auxiliary', batch_name='species_id', k=knn_neigh,
@@ -1046,10 +1224,12 @@ def train_STACAME_GAN(adata_species_dict,
                 positive_ind = np.append(positive_ind, list(map(lambda _: batch_as_dict[_], positive_list)))
                 negative_ind = np.append(negative_ind, list(map(lambda _: batch_as_dict[_], negative_list)))
 
+        # ---- 7) Auxiliary triplet loss (based on updated MNN) ----
         triplet_loss = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
         tri_auxiliary = triplet_loss(z[anchor_ind,], z[positive_ind,], z[negative_ind,]) + triplet_loss(
             auxiliary_z[anchor_ind,], auxiliary_z[positive_ind,], auxiliary_z[negative_ind,])
 
+        # ---- 8) GAN domain confusion ----
         if gan_beta != 0:
             for _ in range(gan_epoch):
                 optimizer_D.zero_grad()
@@ -1065,15 +1245,25 @@ def train_STACAME_GAN(adata_species_dict,
                 auxiliary_optimizer_D.step()
 
         loss_G_GAN = -F.cross_entropy(D_Z(z), true_dom) - F.cross_entropy(auxiliary_D_Z(auxiliary_z), true_dom)
-        if if_integrate_within_species == True:
-            loss = mse_beta * mse_loss + tri_beta * (
-                        tri_auxiliary + 0.1 * tri_output_species) + beta * tri_output + mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN + ot_beta * loss_ot
+
+        # ---- Compose total loss ----
+        if if_integrate_within_species:
+            loss = (mse_beta * mse_loss
+                    + tri_beta * (tri_auxiliary + 0.1 * tri_output_species)
+                    + beta * tri_output
+                    + mmd_beta * mmd_loss_sum
+                    + gan_beta * loss_G_GAN
+                    + ot_beta * loss_ot)
         else:
-            loss = mse_beta * mse_loss + tri_beta * (
-                        tri_auxiliary + 0.1 * tri_output_species) + mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN + ot_beta * loss_ot
+            loss = (mse_beta * mse_loss
+                    + tri_beta * (tri_auxiliary + 0.1 * tri_output_species)
+                    + mmd_beta * mmd_loss_sum
+                    + gan_beta * loss_G_GAN
+                    + ot_beta * loss_ot)
         loss.backward(retain_graph=True)
         optimizer.step()
 
+        # ---------- Record losses (only when if_return_loss is True) ----------
         if if_return_loss:
             loss_dict['Loss name'].append('Loss sum')
             loss_dict['Epoch'].append(epoch)
@@ -1087,34 +1277,40 @@ def train_STACAME_GAN(adata_species_dict,
             loss_dict['Loss name'].append('MMD')
             loss_dict['Epoch'].append(epoch)
             loss_dict['Loss value'].append(mmd_loss_sum.item())
-        if verbose == True and epoch % 100 == 0:
-            print(f'---------------------------------Epoch {epoch}-----------------------------------')
-            print(f'Loss:{loss.item()},'
-                f'MSE:{mse_beta * mse_loss.item()}|'
-                f'Cross species triplets:{tri_beta * tri_output_species.item()}|'
-                f'MMD:{mmd_beta * mmd_loss_sum.item()}|'
-                f'GAN:{gan_beta * loss_G_GAN.item()}|')
             if ot_beta > 0:
                 loss_dict['Loss name'].append('OT')
                 loss_dict['Epoch'].append(epoch)
-                loss_dict['Loss value'].append(ot_loss.item())
-                print(f'ot:{ot_beta * loss_ot.item()}')
-            if if_integrate_within_species == True:
-                print(
-                    f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(sampling_num_spe).to(device)).item()}, Cross slices triplets: {tri_output.item()}')
+                loss_dict['Loss value'].append(loss_ot.item())
+
+        # ---------- Verbose logging ----------
+        if verbose and epoch % 100 == 0:
+            cos_sim = cosine_loss(anchor_arr_species, positive_arr_species,
+                                  torch.ones(sampling_num_spe).to(device)).item()
+            print(f'---------------------------------Epoch {epoch:4d}-----------------------------------')
+            print(f'Total loss: {loss.item():.4f}|',
+                  f'MSE (weighted): {mse_beta * mse_loss.item():.4f}|',
+                  f'Cross-species Tri: {tri_beta * tri_output_species.item():.4f}|',
+                f'Auxiliary Tri: {tri_beta * tri_auxiliary.item():.4f}|',
+                f'MMD (weighted): {mmd_beta * mmd_loss_sum.item():.4f}|',
+                f'GAN (weighted): {gan_beta * loss_G_GAN.item():.4f}')
+            if ot_beta > 0:
+                print(f'OT (weighted): {ot_beta * loss_ot.item():.4f}')
+            if if_integrate_within_species:
+                print(f'Cross-slices Tri: {beta * tri_output.item():.4f}')
+                print(f'Cosine sim (mon.): {cos_sim:.4f}')
                 if if_return_loss:
                     loss_dict['Loss name'].append('Cross-slices triplet')
                     loss_dict['Epoch'].append(epoch)
                     loss_dict['Loss value'].append(tri_output.item())
-            else:
-                print(
-                    f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(sampling_num_spe).to(device)).item()}')
 
+        # ---------- Update final embedding in AnnData objects ----------
         for species_id in z_dict.keys():
             k_add = species_add_dict[species_id]
             adata_species_dict[species_id].obsm[key_added] = z[
                 k_add:int(k_add + adata_species_dict[species_id].n_obs), :].cpu().detach().numpy()
         adata_whole.obsm['auxiliary'] = auxiliary_z.cpu().detach().numpy()
+
+        # Periodic UMAP for visual inspection (downsampled if >50000 spots)
         if epoch % plot_epoch == 0 and n_epochs_species - epoch >= plot_epoch:
             if z.shape[0] >= 50000:
                 clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate=0.1)
@@ -1127,6 +1323,7 @@ def train_STACAME_GAN(adata_species_dict,
     else:
         clustering_umap(adata_species_dict, key_umap=key_added)
 
+    # ---------- Cleanup ----------
     del model, auxiliary_model, optimizer, D_Z, auxiliary_D_Z, data, auxiliary_data
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -1146,7 +1343,6 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                      edge_ndarray_sections=None,
                                      hidden_dims=[512, 30],
                                      stagate_epoch=500,
-                                     n_epochs=1000,
                                      n_epochs_species=2000,
                                      lr=0.001,
                                      key_added='STACAME',
@@ -1157,7 +1353,6 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                      margin=1.0,
                                      margin_species=1.0,
                                      lr_species=0.001,
-                                     alpha=1,
                                      beta=1,
                                      verbose=False,
                                      random_seed=666,
@@ -1181,47 +1376,122 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                      concate_pca_dim=None,
                                      umap_downsampling_rate=0.1,
                                      adata_whole=None):
-    """\
-    Train graph attention auto-encoder and use spot triplets across species to perform batch correction in the embedding space.
+    """
+    Subgraph‑based training of STACAME with GAN loss and an auxiliary model.
+
+    This function performs cross‑species spatial transcriptomics integration
+    using a graph‑attention auto‑encoder. It first pretrains a STAGATE model
+    per species (with optional mini‑batch training), then jointly trains a
+    primary decoder and an auxiliary model on concatenated data containing
+    multiple species. The training leverages subgraph sampling to handle
+    large‑scale datasets and incorporates several loss components:
+    - MSE reconstruction loss (primary + auxiliary)
+    - Cross‑species triplet loss
+    - Within‑species slice triplet loss (optional)
+    - Maximum Mean Discrepancy (MMD) loss
+    - GAN‑based domain confusion loss (optional)
+    - Unbalanced optimal transport (OT) loss (optional)
 
     Parameters
     ----------
-    adata
-        AnnData object of scanpy package.
-    hidden_dims
-        The dimension of the encoder.
-    n_epochs
-        Number of total epochs in training.
-    lr
-        Learning rate for AdamOptimizer.
-    key_added
-        The latent embeddings are saved in adata.obsm[key_added].
-    gradient_clipping
-        Gradient Clipping.
-    weight_decay
-        Weight decay for AdamOptimizer.
-    margin
-        Margin is used in triplet loss to enforce the distance between positive and negative pairs.
-        Larger values result in more aggressive correction.
-    iter_comb
-        For multiple slices integration, we perform iterative pairwise integration. iter_comb is used to specify the order of integration.
-        For example, (0, 1) means slice 0 will be algined with slice 1 as reference.
-    knn_neigh
-        The number of nearest neighbors when constructing MNNs. If knn_neigh>1, points in one slice may have multiple MNN points in another slice.
-    device
-        See torch.device.
+    adata_species_dict : dict
+        Dictionary mapping species names to AnnData objects.
+    triplet_ind_species_dict : dict
+        Cross‑species triplet indices (keys: 'anchor_ind_species',
+        'positive_ind_species', 'negative_ind_species').
+    edge_ndarray_species : np.ndarray
+        Cross‑species MNN edge array of shape (2, n_edges).
+    triplet_ind_sections_dict : dict, optional
+        Within‑species slice triplet indices.
+    edge_ndarray_sections : np.ndarray, optional
+        Within‑species slice MNN edge array.
+    hidden_dims : list
+        Encoder/decoder hidden dimensions [output_dim, bottleneck_dim].
+    stagate_epoch : int or dict
+        Pretraining epochs per species. If int, applies to all.
+    n_epochs_species : int
+        Number of joint cross‑species training epochs.
+    lr : float
+        Learning rate for pretraining.
+    key_added : str
+        Key in ``obsm`` where final embeddings are stored.
+    gradient_clipping : float
+        Max gradient norm for clipping.
+    weight_decay : float
+        Weight decay for pretraining optimizer.
+    lr_wd : float
+        (Unused; kept for compatibility.)
+    weight_decay_wd : float
+        (Unused; kept for compatibility.)
+    margin : float
+        Triplet margin for within‑species constraints.
+    margin_species : float
+        Triplet margin for cross‑species constraints.
+    lr_species : float
+        Learning rate for joint training.
+    beta : float
+        Weight for within‑species triplet loss.
+    verbose : bool
+        If True, print loss details every 100 epochs.
+    random_seed : int
+        Random seed.
+    iter_comb : tuple or None
+        Slice integration order.
+    knn_neigh : int
+        Neighbours for MNN construction.
+    device : torch.device
+        Device for joint training.
+    pretrain_device : torch.device
+        Device for pretraining.
+    mse_beta : float
+        Weight for MSE loss.
+    tri_beta : float
+        Weight for cross‑species triplet loss.
+    mmd_beta : float
+        Weight for MMD loss.
+    gan_beta : float
+        Weight for GAN loss (0 to disable).
+    gan_epoch : int
+        Discriminator training steps per generator step.
+    ot_beta : float
+        Weight for OT loss (0 to disable).
+    mmd_batch_size : int
+        Sample size for MMD computation.
+    if_knn_mnn_graph : bool
+        Whether to add cross‑species MNN edges to the graph.
+    if_integrate_within_species : bool
+        Whether to enable within‑species slice integration.
+    if_return_loss : bool
+        If True, return a loss tracking dictionary.
+    if_batch_pretrain : bool
+        Whether to pretrain with mini‑batch sampling.
+    batch_size_dict : dict
+        Mini‑batch sizes for pretraining per species.
+    batch_size : int
+        Batch size for subgraph sampling during joint training.
+    concate_pca_dim : int or None
+        PCA dimension for concatenated gene expression; if None, raw
+        expression is used.
+    umap_downsampling_rate : float
+        Downsampling fraction for UMAP visualisation.
+    adata_whole : AnnData
+        Concatenated AnnData object across species.
 
     Returns
     -------
-    AnnData dict, storing AnnData for each species
+    adata_species_dict : dict
+        Updated AnnData dict with final embedding in ``obsm[key_added]``.
+    loss_dict : dict, optional
+        Recorded losses per epoch, returned when ``if_return_loss=True``.
     """
 
     import gc
-    # 初始清空缓存
+    # Clear GPU cache at start
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
-    # seed_everything()
+
+    # ---------- Set all random seeds for reproducibility ----------
     seed = random_seed
     import random
     random.seed(seed)
@@ -1237,18 +1507,16 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.benchmark = False
-    # torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.enabled = True
 
-    # torch.use_deterministic_algorithms(True)
+    # Allow species‑specific pretraining epochs via a dict
     if not isinstance(stagate_epoch, dict):
         stagate_epoch_dict = {k: stagate_epoch for k in adata_species_dict.keys()}
     else:
         stagate_epoch_dict = stagate_epoch
 
-    # Initializing the hidden units, model and optimizer dicts
+    # ---------- Per‑species STAGATE pretraining ----------
     z_dict = {k: 0 for k in adata_species_dict.keys()}
-    # Train a STAGATE model for each species
     species_order = 0
     for species_id, adata in adata_species_dict.items():
         section_ids = np.array(adata.obs['batch_name'].unique())
@@ -1256,17 +1524,20 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
         if 'highly_variable' in adata.var.columns:
             adata = adata[:, adata.uns['highly_variable']]
         print(f'For {species_id}, using {len(adata.var_names)} genes for training.')
+
+        # Build PyG Data object
         data = Data(edge_index=torch.LongTensor(np.array([edgeList[0], edgeList[1]])),
                     prune_edge_index=torch.LongTensor(np.array([])),
                     x=torch.FloatTensor(adata.X.todense()))
 
-        # If use mini-batch training
+        # -------- Mini‑batch pretraining branch --------
         if if_batch_pretrain:
             if species_order == 0:
                 model = STACAME.STACAME_minibatch_large(
                     hidden_dims=[data.x.shape[1], hidden_dims[0], hidden_dims[1]]).to(pretrain_device)
                 optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-            # Minibatch
+
+            # Neighbourhood sampler for mini‑batch training
             train_loader = NeighborSampler(data.edge_index,
                                            node_idx=torch.LongTensor(np.array([i for i in range(adata.n_obs)])),
                                            sizes=[8, 4], batch_size=batch_size_dict[species_id], shuffle=True,
@@ -1281,11 +1552,9 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                     adjs = [adj.to(pretrain_device) for adj in adjs]
                     optimizer.zero_grad()
                     z_batch, out_batch = model(data.x[n_id, :].to(pretrain_device), adjs, mode='batch')
-                    # get batch data
                     x_batch = data.x[n_id, :].to(pretrain_device)
-                    # if epoch % 2 == 0:
-                    # n_id_batch = n_id[0:batchsize]
 
+                    # Create within‑batch triplets using MNN pairs
                     n_id_list = n_id.cpu().detach().numpy()
                     batch_id_list = adata.obs['batch_name'][n_id_list]
                     x_batch_cpu = z_batch.cpu().detach().numpy()
@@ -1299,7 +1568,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                     anchor_ind = []
                     positive_ind = []
                     negative_ind = []
-                    for batch_pair in mnn_dict.keys():  # pairwise compare for multiple batches
+                    for batch_pair in mnn_dict.keys():
                         batchname_list = x_batch_adata.obs['batch_name'][mnn_dict[batch_pair].keys()]
                         cellname_by_batch_dict = dict()
                         for batch_id in range(len(section_ids)):
@@ -1311,8 +1580,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                         negative_list = []
                         for anchor in mnn_dict[batch_pair].keys():
                             anchor_list.append(anchor)
-                            ## np.random.choice(mnn_dict[batch_pair][anchor])
-                            positive_spot = mnn_dict[batch_pair][anchor][0]  # select the first positive spot
+                            positive_spot = mnn_dict[batch_pair][anchor][0]
                             positive_list.append(positive_spot)
                             section_size = len(cellname_by_batch_dict[batchname_list[anchor]])
                             negative_list.append(
@@ -1331,11 +1599,10 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                     tri_output = triplet_loss(anchor_arr, positive_arr, negative_arr)
                     loss = F.mse_loss(out_batch, x_batch) + beta * tri_output
                     loss.backward()
-                    # torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
                     optimizer.step()
                     total_loss += loss.item()
-                # print(f'Epoch = {epoch}, mse loss = {total_loss/len(train_loader)}')
 
+            # After pretraining, extract full embeddings using subgraph loader
             with torch.no_grad():
                 z_list = []
                 out_list = []
@@ -1345,7 +1612,6 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                     z_list.append(z[:batch.batch_size].cpu())
                     out_list.append(out[:batch.batch_size].cpu())
 
-            # z, _ = model(data.x, data.edge_index)
             z_all = torch.cat(z_list, dim=0)
             out_all = torch.cat(out_list, dim=0)
             adata_species_dict[species_id].obsm['STAGATE'] = z_all.cpu().detach().numpy()
@@ -1357,7 +1623,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                     torch.cuda.empty_cache()
                 gc.collect()
 
-        # Not use minibatch training
+        # -------- Full‑batch pretraining branch --------
         else:
             print('Pretrain with STAligner...')
             if species_order == 0:
@@ -1371,18 +1637,15 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                 optimizer.zero_grad()
                 z, out = model(data.x.to(pretrain_device), data.edge_index.to(pretrain_device))
 
+                # Refresh within‑species triplets periodically
                 if epoch % 10 == 0 and epoch >= stagate_epoch_dict[species_id] // 2:
-                    # if verbose:
-                    #     print('Update spot triplets at epoch ' + str(epoch))
                     adata.obsm['STAGATE'] = z.cpu().detach().numpy()
-                    # If knn_neigh>1, points in one slice may have multiple MNN points in another slice.
-                    # not all points have MNN achors
                     mnn_dict = create_dictionary_mnn(adata, use_rep='STAGATE', batch_name='batch_name', k=knn_neigh,
                                                      iter_comb=iter_comb, verbose=0)
                     anchor_ind = []
                     positive_ind = []
                     negative_ind = []
-                    for batch_pair in mnn_dict.keys():  # pairwise compare for multiple batches
+                    for batch_pair in mnn_dict.keys():
                         batchname_list = adata.obs['batch_name'][mnn_dict[batch_pair].keys()]
                         cellname_by_batch_dict = dict()
                         for batch_id in range(len(section_ids)):
@@ -1394,8 +1657,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                         negative_list = []
                         for anchor in mnn_dict[batch_pair].keys():
                             anchor_list.append(anchor)
-                            ## np.random.choice(mnn_dict[batch_pair][anchor])
-                            positive_spot = mnn_dict[batch_pair][anchor][0]  # select the first positive spot
+                            positive_spot = mnn_dict[batch_pair][anchor][0]
                             positive_list.append(positive_spot)
                             section_size = len(cellname_by_batch_dict[batchname_list[anchor]])
                             negative_list.append(
@@ -1416,27 +1678,28 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                 else:
                     loss = F.mse_loss(data.x.to(pretrain_device), out)
                 loss.backward(retain_graph=True)
-                # torch.nn.utils.clip_grad_norm_(model.parameters(), 5.)
                 optimizer.step()
-            # print(f'mse loss = {loss.item()}')
+
             with torch.no_grad():
                 z, _ = model(data.x.to(pretrain_device), data.edge_index.to(pretrain_device))
 
             adata_species_dict[species_id].obsm['STAGATE'] = z.cpu().detach().numpy()
             z_dict[species_id] = z.cpu().detach()
 
-    # if species_order >= len(adata_species_dict.keys()):
+    # Clean up pretraining resources
     del model, optimizer, data, z, out
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
     gc.collect()
+
     cosine_loss = torch.nn.CosineEmbeddingLoss(reduce=True)
     print('-------------------------------------------------------------------------------')
     print('Train with STACAME...')
     anchor_ind_species = triplet_ind_species_dict['anchor_ind_species']
     positive_ind_species = triplet_ind_species_dict['positive_ind_species']
     negative_ind_species = triplet_ind_species_dict['negative_ind_species']
-    ##########################################-Cross Species####################################################
+
+    # ---------- Build concatenated graph ----------
     k_add = 0
     species_add_dict = {k: None for k in z_dict.keys()}
     for species_id in z_dict.keys():
@@ -1446,7 +1709,6 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
     adata = adata_species_dict[list(adata_species_dict.keys())[0]]
     edgeList = adata.uns['edgeList']
     edge_ndarray = np.array([edgeList[0], edgeList[1]])
-    # if verbose:
     S = 0
     for species_id, adata in adata_species_dict.items():
         section_ids = np.array(adata.obs['batch_name'].unique())
@@ -1458,9 +1720,11 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             S = S + 1
     edge_ndarray_species = np.array([edge_ndarray_species[0], edge_ndarray_species[1]])
 
-    # Choose whether build the knn and mnn cross species neigbors into the graph
-    if if_knn_mnn_graph == True:
+    # Optionally add cross‑species MNN edges
+    if if_knn_mnn_graph:
         edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_species), axis=1)
+
+    # Concatenate pretrained latent representations
     S = 0
     for species_id, z_input in z_dict.items():
         if S == 0:
@@ -1468,16 +1732,15 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
         else:
             X = np.concatenate((X, z_dict[species_id].cpu().detach().numpy()), axis=0)
         S = S + 1
-    # ---------------------------Init graph-----------------------------
+
     print('Pretrain with STAGATE_multiple...')
-    # ----------------------------Create model------------------------------
     print('Train with cross species STACAME...')
     cosine_loss = torch.nn.CosineEmbeddingLoss(reduce=True)
     triplet_loss_species = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
 
     z = torch.FloatTensor(X)
-    # Merge X and get cross-species features
-    # -------------------------------------------------------
+
+    # Merge gene expression across species (optionally apply PCA)
     S = 0
     for species_id, adata in adata_species_dict.items():
         if S != 0:
@@ -1498,52 +1761,51 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
     else:
         auxiliary_X = torch.FloatTensor(adata_whole.obsm['X_pca'])
 
-    if concate_pca_dim != None:
+    if concate_pca_dim is not None:
         adata_X = ad.AnnData(merge_X)
         sc.pp.scale(adata_X)
         sc.tl.pca(adata_X, n_comps=concate_pca_dim)
-        merge_X = adata_X.obsm["X_pca"]  # shape: (n_cells, n_comps)
-    merge_X = torch.FloatTensor(merge_X)
-    ##-----------------------------------------------------------
-    model = STACAME.STACAMEDecoder_minibatch(hidden_dims=[merge_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
+        merge_X = adata_X.obsm["X_pca"]
 
+    merge_X = torch.FloatTensor(merge_X)
+
+    # ---------- Build models ----------
+    model = STACAME.STACAMEDecoder_minibatch(hidden_dims=[merge_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
     auxiliary_model = STACAME.STACAME_minibatch(
         hidden_dims=[auxiliary_X.shape[1], hidden_dims[0] // 2, hidden_dims[1]]).to(device)
 
     optimizer = torch.optim.Adam(list(model.parameters()) + list(auxiliary_model.parameters()), lr=lr_species,
                                  weight_decay=weight_decay)
 
-    if if_integrate_within_species == True:
+    # Optionally add within‑species slice edges and triplets
+    if if_integrate_within_species:
         anchor_ind_sections = triplet_ind_sections_dict['anchor_ind_sections']
         positive_ind_sections = triplet_ind_sections_dict['positive_ind_sections']
         negative_ind_sections = triplet_ind_sections_dict['negative_ind_sections']
-        if if_knn_mnn_graph == True:
+        if if_knn_mnn_graph:
             edge_ndarray_sections = np.array([edge_ndarray_sections[0], edge_ndarray_sections[1]])
             edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_sections), axis=1)
-            data = Data(edge_index=torch.LongTensor(edge_ndarray),
-                        prune_edge_index=torch.LongTensor(np.array([])), x=z)
-            data = data.to(device)
-        else:
-            data = Data(edge_index=torch.LongTensor(edge_ndarray),
-                        prune_edge_index=torch.LongTensor(np.array([])), x=z)
-            data = data.to(device)
+        data = Data(edge_index=torch.LongTensor(edge_ndarray),
+                    prune_edge_index=torch.LongTensor(np.array([])), x=z)
+        data = data.to(device)
     else:
         data = Data(edge_index=torch.LongTensor(edge_ndarray),
                     prune_edge_index=torch.LongTensor(np.array([])), x=z)
         data = data.to(device)
 
-    # print('adata_species_dict.keys()', adata_species_dict.keys())
+    # Summarise species sizes
     for spe, adata in adata_species_dict.items():
         print(spe, adata.n_obs)
 
+    # Create a mapping from global spot index to species name
     id_species_dict = {k: None for k in range(merge_X.shape[0])}
     k_add = 0
     for spe_id in adata_species_dict.keys():
         for id_s in range(k_add, k_add + adata_species_dict[spe_id].n_obs):
             id_species_dict[id_s] = spe_id
-        k_add = k_add + adata_species_dict[spe_id].n_obs  # species_add_dict[spe_id]
+        k_add = k_add + adata_species_dict[spe_id].n_obs
 
-    # The predict data loader, where the number 5 should be adjusted depended on the GPU memory
+    # Subgraph loader for full inference (batch_size * 2 to utilise GPU)
     subgraph_loader = NeighborLoader(data, num_neighbors=[-1], batch_size=batch_size * 2, shuffle=False)
 
     if if_return_loss:
@@ -1551,6 +1813,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
 
     plot_epoch = n_epochs_species // 3
 
+    # Discriminators for GAN domain confusion
     D_Z = STACAME.MultiClassDiscriminator(hidden_dims[1], len(adata_species_dict.keys())).to(device)
     optimizer_D = torch.optim.Adam(list(D_Z.parameters()), lr=0.001, weight_decay=0.001)
     D_Z.train()
@@ -1559,13 +1822,13 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
     auxiliary_optimizer_D = torch.optim.Adam(list(auxiliary_D_Z.parameters()), lr=0.001, weight_decay=0.001)
     auxiliary_D_Z.train()
 
+    # Ground‑truth domain labels
     species_list = []
-    # celltype_all_list = []
     for species_id, adata in adata_species_dict.items():
         species_list = species_list + [species_id] * adata.n_obs
+    true_dom = torch.LongTensor(pd.Series(species_list).astype('category').cat.codes.values)
 
-    true_dom = torch.LongTensor(pd.Series(species_list).astype('category').cat.codes.values)  # .to(device)
-    species_list = []
+    species_list = []  # re‑initialised for safety
     for species_id, adata in adata_species_dict.items():
         species_list = species_list + [species_id] * adata.n_obs
 
@@ -1575,15 +1838,16 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                                shuffle=False)
 
     ite_N = max(int((len(anchor_ind_species) // batch_size)) + 1, 1)
-    # ite_N = max(int((auxiliary_X.shape[0] // batch_size)) + 1, 1)
     print('ite_N', ite_N)
     species_ids = list(adata_species_dict.keys())
 
+    species_id_list = list(adata_species_dict.keys())
+
+    # ---------- Cross‑species joint training ----------
     for epoch in tqdm(range(0, n_epochs_species)):
-        # subsampling anchor, positive, and negative
+        # Update per‑species latent arrays
         k_add = 0
         for species_id in z_dict.keys():
-            # species_add_dict[species_id] = int(k_add)
             adata_species_dict[species_id].obsm['STAGATE'] = z[k_add:int(k_add + adata_species_dict[species_id].n_obs),
                                                              :].cpu().detach().numpy()
             z_dict[species_id] = adata_species_dict[species_id].obsm['STAGATE']
@@ -1598,6 +1862,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             else:
                 adata_whole.obsm['auxiliary'] = adata_whole.obsm['X_pca']
 
+        # Periodically refresh cross‑species triplets via MNN on auxiliary embeddings
         if epoch % 50 == 0 and epoch > 0:
             mnn_dict = create_dictionary_mnn(adata_whole, use_rep='auxiliary', batch_name='species_id', k=knn_neigh,
                                              iter_comb=iter_comb, verbose=0)
@@ -1633,14 +1898,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             positive_ind_species_ = np.concatenate([positive_ind_species, positive_ind_species_])
             negative_ind_species_ = np.concatenate([negative_ind_species, negative_ind_species_])
 
-        mse_loss_mean = 0
-        mse_loss = 0
-        tri_output_species_mean = 0
-        tri_output_slice_mean = 0
-        mmd_loss_sum_mean = 0
-        batch_num = 0
-        species_id_list = list(adata_species_dict.keys())
-
+        # Subgraph iteration over triplets
         for ite_ in range(ite_N):
             triples_N = len(anchor_ind_species)
             tri_ind_list = random.sample(list(range(triples_N)), min(triples_N, batch_size))
@@ -1652,7 +1910,8 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             ind_list_init = list(
                 set(anchor_ind_species_batch + positive_ind_species_batch + negative_ind_species_batch))
 
-            if if_integrate_within_species == True:
+            # Include within‑species slice triplets if applicable
+            if if_integrate_within_species:
                 triples_N_sec = len(anchor_ind_sections)
                 tri_ind_list_sec = random.sample(list(range(triples_N_sec)), min(batch_size, triples_N_sec))
 
@@ -1663,6 +1922,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                 ind_list_init = list(set(ind_list_init + list(
                     set(anchor_ind_sections_batch + positive_ind_sections_batch + negative_ind_sections_batch))))
 
+            # Extract 1‑hop subgraph around the selected nodes
             idx_subset, edge_index_batch, mapping, edge_mask = k_hop_subgraph(node_idx=torch.LongTensor(ind_list_init),
                                                                               num_hops=1, edge_index=data.edge_index,
                                                                               relabel_nodes=True)
@@ -1673,30 +1933,31 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             model.train()
             optimizer.zero_grad()
             z_batch, out = model(data.x[idx_subset_list,].to(device), edge_index_batch.to(device), mode='whole')
-            # print('-----------------------------')
-            # print(auxiliary_X[idx_subset_list,].shape)
-            # print(auxiliary_model)
             auxiliary_z_batch, auxiliary_out = auxiliary_model(auxiliary_data.x[idx_subset_list,].to(device),
                                                                edge_index_batch.to(device), mode='whole')
 
+            # 1) MSE reconstruction loss
             mse_loss = F.mse_loss(merge_X[idx_subset_list,].to(device), out) + F.mse_loss(
                 auxiliary_X[idx_subset_list,].to(device), auxiliary_out)
 
-            if if_integrate_within_species == True:
+            # 2) Within‑species slice triplet loss (optional)
+            if if_integrate_within_species:
                 anchor_arr = z_batch[[idx_map[x] for x in anchor_ind_sections_batch],]
                 positive_arr = z_batch[[idx_map[x] for x in positive_ind_sections_batch],]
                 negative_arr = z_batch[[idx_map[x] for x in negative_ind_sections_batch],]
                 triplet_loss = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
                 tri_output = triplet_loss(anchor_arr, positive_arr, negative_arr)
             else:
-                pass
+                tri_output = torch.tensor(0.0, device=device)
+
+            # 3) Cross‑species triplet loss
             anchor_arr_species = z_batch[[idx_map[x] for x in anchor_ind_species_batch],]
             positive_arr_species = z_batch[[idx_map[x] for x in positive_ind_species_batch],]
             negative_arr_species = z_batch[[idx_map[x] for x in negative_ind_species_batch],]
             triplet_loss_species = torch.nn.TripletMarginLoss(margin=margin_species, p=2, reduction='mean')
             tri_output_species = triplet_loss_species(anchor_arr_species, positive_arr_species, negative_arr_species)
-            # print(f'Number of triplets: {len(anchor_ind_species_batch)}')
 
+            # 4) MMD loss (between a randomly chosen species and the rest)
             z_ind_species_dict = {k: [] for k in adata_species_dict.keys()}
             for n_id_temp in idx_subset_list:
                 n_id_species = id_species_dict[n_id_temp]
@@ -1724,6 +1985,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             anchor_arr_species_X = x_batch[[idx_map[x] for x in anchor_ind_species_batch],]
             positive_arr_species_X = x_batch[[idx_map[x] for x in positive_ind_species_batch],]
 
+            # 5) GAN domain confusion loss
             if gan_beta != 0:
                 for _ in range(gan_epoch):
                     optimizer_D.zero_grad()
@@ -1740,39 +2002,37 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
 
             loss_G_GAN = -F.cross_entropy(D_Z(z_batch), true_dom[idx_subset_list,].to(device)) - F.cross_entropy(
                 auxiliary_D_Z(auxiliary_z_batch), true_dom[idx_subset_list,].to(device))
-            # mmd_loss_sum = mmd_loss(z_A[0:mmd_batch_size, :], z_B[0:mmd_batch_size, :]).to(device) + mmd_loss_sum + mmd_loss(auxiliary_z_A[0:mmd_batch_size, :], auxiliary_z_B[0:mmd_batch_size, :]).to(device)
-            mmd_loss_sum = mmd_loss(z_A[0:mmd_batch_size, :], z_B[0:mmd_batch_size, :]).to(
-                device) + mmd_loss_sum + mmd_loss(auxiliary_z_A[0:mmd_batch_size, :],
-                                                  auxiliary_z_B[0:mmd_batch_size, :]).to(device)
 
-            loss_ot = 0
-            loss_ot_value = 0
+            mmd_loss_sum = mmd_loss(z_A[0:mmd_batch_size, :], z_B[0:mmd_batch_size, :]).to(device) + \
+                           mmd_loss(auxiliary_z_A[0:mmd_batch_size, :], auxiliary_z_B[0:mmd_batch_size, :]).to(device)
+
+            # 6) Optional optimal transport loss
+            loss_ot_value = 0.0
+            loss_ot = torch.tensor(0.0, device=device)
             if ot_beta != 0:
                 c_cross = pairwise_correlation_distance(anchor_arr_species_X.detach(),
                                                         positive_arr_species_X.detach()).to(device)
                 T = unbalanced_ot(cost_pp=c_cross, reg=0.05, reg_m=0.5, device=device)
                 z_dist = torch.mean((anchor_arr_species.view(anchor_arr_species_X.shape[0], 1,
-                                                             -1) - positive_arr_species.view(1,
-                                                                                             anchor_arr_species_X.shape[
-                                                                                                 0], -1)) ** 2, dim=2)
+                                                             -1) - positive_arr_species.view(
+                    1, anchor_arr_species_X.shape[0], -1)) ** 2, dim=2)
                 loss_ot = torch.sum(T * z_dist) / torch.sum(T)
                 loss_ot_value = loss_ot.item()
 
             sampling_num_spe = anchor_arr_species.shape[0]
 
-            # modality align loss
-            # z_dist = torch.mean((z_A[0:mmd_batch_size].view(mmd_batch_size, 1, -1) - z_B[0:mmd_batch_size].view(1, mmd_batch_size, -1))**2, dim=2)
-            # loss_ot = torch.sum(T * z_dist) / torch.sum(T)
-            # loss_G_GAN = -(torch.log(1 + torch.exp(-D_Z(z_A))) + torch.log(1 + torch.exp(D_Z(z_B)))).mean()
-            if if_integrate_within_species == True:
-                loss = mse_beta * mse_loss + tri_beta * tri_output_species + beta * tri_output + mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN + ot_beta * loss_ot
+            if if_integrate_within_species:
+                loss = mse_beta * mse_loss + tri_beta * tri_output_species + beta * tri_output + \
+                       mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN + ot_beta * loss_ot
             else:
-                loss = mse_beta * mse_loss + tri_beta * tri_output_species + mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN + ot_beta * loss_ot
+                loss = mse_beta * mse_loss + tri_beta * tri_output_species + \
+                       mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN + ot_beta * loss_ot
 
             loss.backward(retain_graph=True)
             torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
             optimizer.step()
 
+        # ---------- Record and verbosely print losses ----------
         if if_return_loss:
             loss_dict['Loss name'].append('Loss sum')
             loss_dict['Epoch'].append(epoch)
@@ -1786,23 +2046,23 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
             loss_dict['Loss name'].append('MMD')
             loss_dict['Epoch'].append(epoch)
             loss_dict['Loss value'].append(mmd_loss_sum.item())
-        if verbose == True and epoch % 100 == 0:
-            print(f'---------------------------------Epoch {epoch}-----------------------------------')
-            print(f'Total loss: {loss.item()}')
-            print(
-                f'MSE:{mse_beta * mse_loss.item()}, Cross species triplets:{tri_beta * tri_output_species.item()}, '
-                f'MMD:{mmd_beta * mmd_loss_sum.item()}, GAN: {gan_beta * loss_G_GAN.item()}, OT: {ot_beta * loss_ot_value}')
-        if if_integrate_within_species == True:
-            print(
-                f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(len(anchor_arr_species)).to(device)).item()}, Cross slices triplets: {tri_output.item()}')
-            if if_return_loss:
-                loss_dict['Loss name'].append('Cross-slices triplet')
-                loss_dict['Epoch'].append(epoch)
-                loss_dict['Loss value'].append(tri_output.item())
-            else:
-                print(
-                    f'Cosine cross species loss:{cosine_loss(anchor_arr_species, positive_arr_species, torch.ones(len(anchor_arr_species)).to(device)).item()}')
 
+        if verbose and epoch % 100 == 0:
+            # Calculate cosine similarity for monitoring
+            cos_sim = cosine_loss(anchor_arr_species, positive_arr_species,
+                                  torch.ones(len(anchor_arr_species)).to(device)).item()
+            out_str = (f'Epoch {epoch:4d} | Total: {loss.item():.4f} | '
+                       f'MSE: {mse_beta * mse_loss.item():.4f} | '
+                       f'Cross-species Tri: {tri_beta * tri_output_species.item():.4f} | '
+                       f'MMD: {mmd_beta * mmd_loss_sum.item():.4f} | '
+                       f'GAN: {gan_beta * loss_G_GAN.item():.4f} | '
+                       f'OT: {ot_beta * loss_ot_value:.4f} | '
+                       f'CosSim: {cos_sim:.4f}')
+            if if_integrate_within_species:
+                out_str += f' | Slice Tri: {beta * tri_output.item():.4f}'
+            print(out_str)
+
+        # ---------- Full inference using subgraph loader to update z ----------
         with torch.no_grad():
             z_list = []
             out_list = []
@@ -1823,15 +2083,12 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
 
         auxiliary_z = torch.cat(auxiliary_z_list, dim=0)
         adata_whole.obsm['auxiliary'] = auxiliary_z.cpu().detach().numpy()
-        # triplet_loss = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
-        # tri_auxiliary = triplet_loss(z[anchor_ind,], z[positive_ind,], z[negative_ind,]) + triplet_loss(
-        #     auxiliary_z[anchor_ind,], auxiliary_z[positive_ind,], auxiliary_z[negative_ind,])
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
         for species_id in z_dict.keys():
             k_add = species_add_dict[species_id]
-            adata_species_dict[species_id].obsm[key_added] = z[k_add:int(k_add + adata_species_dict[species_id].n_obs),
-                                                             :].cpu().detach().numpy()
+            adata_species_dict[species_id].obsm[key_added] = z[
+                k_add:int(k_add + adata_species_dict[species_id].n_obs), :].cpu().detach().numpy()
 
+        # Periodic UMAP visualisation
         if epoch % plot_epoch == 0 and n_epochs_species - epoch >= plot_epoch:
             if z.shape[0] >= 50000:
                 clustering_umap_downsampling(adata_species_dict, key_umap=key_added,
@@ -1845,8 +2102,6 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
     else:
         clustering_umap(adata_species_dict, key_umap=key_added)
 
-    # print('Clustering and UMAP of Cross Species STACAME:')
-    # clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate = umap_downsampling_rate)
     del model, optimizer, D_Z, data
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
