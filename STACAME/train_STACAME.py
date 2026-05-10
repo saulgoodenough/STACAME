@@ -305,7 +305,7 @@ def train_STACAME(adata_species_dict,
                   n_epochs_species=2000,
                   lr=0.001,
                   key_added='STACAME',
-                  gradient_clipping=10.,
+                  gradient_clipping=5.,
                   weight_decay=0.0001,
                   lr_wd=0.001,
                   weight_decay_wd=5e-4,
@@ -803,7 +803,7 @@ def train_STACAME_GAN(adata_species_dict,
                       n_epochs_species=2000,
                       lr=0.001,
                       key_added='STACAME',
-                      gradient_clipping=10.,
+                      gradient_clipping=5.,
                       weight_decay=0.0001,
                       lr_wd=0.001,
                       weight_decay_wd=5e-4,
@@ -1459,7 +1459,7 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                      n_epochs_species=2000,
                                      lr=0.001,
                                      key_added='STACAME',
-                                     gradient_clipping=10.,
+                                     gradient_clipping=5.,
                                      weight_decay=0.0001,
                                      lr_wd=0.001,
                                      weight_decay_wd=5e-4,
@@ -2237,7 +2237,7 @@ def train_STACAME_subgraph(adata_species_dict,
                   n_epochs_species=2000,  
                   lr=0.001, 
                   key_added='STACAME',
-                  gradient_clipping=10., 
+                  gradient_clipping=5.,
                   weight_decay=0.0001, 
                   lr_wd=0.001, 
                   weight_decay_wd=5e-4,
@@ -2366,7 +2366,7 @@ def train_STACAME_subgraph(adata_species_dict,
                 x_batch = data.x[n_id,:].to(pretrain_device)
                 loss = F.mse_loss(out_batch, x_batch)
                 loss.backward()
-                #torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
                 optimizer.step()
                 total_loss += loss.item()
             #print(f'Epoch = {epoch}, mse loss = {total_loss/len(train_loader)}')
@@ -2611,7 +2611,7 @@ def train_STACAME_subgraph(adata_species_dict,
                 loss =  mse_beta * mse_loss + tri_beta * tri_output_species + mmd_beta * mmd_loss_sum + gan_beta * loss_G_GAN
 
             loss.backward(retain_graph=True)
-            #torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
             optimizer.step()
             
 
@@ -2655,7 +2655,7 @@ def train_STACAME_subgraph(adata_species_dict,
         
         z = torch.cat(z_list, dim=0)
         out_all = torch.cat(out_list, dim=0)
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
         for species_id in z_dict.keys():
             k_add = species_add_dict[species_id]
             adata_species_dict[species_id].obsm[key_added] = z[k_add:int(k_add+adata_species_dict[species_id].n_obs), :].cpu().detach().numpy()
@@ -2685,7 +2685,7 @@ def train_STACAME_subgraph_GAN(adata_species_dict,
                   n_epochs_species=2000,  
                   lr=0.001, 
                   key_added='STACAME',
-                  gradient_clipping=10., 
+                  gradient_clipping=5.,
                   weight_decay=0.0001, 
                   lr_wd=0.001, 
                   weight_decay_wd=5e-4,
@@ -2863,7 +2863,7 @@ def train_STACAME_subgraph_GAN(adata_species_dict,
                     tri_output = triplet_loss(anchor_arr, positive_arr, negative_arr)
                     loss = F.mse_loss(out_batch, x_batch) + beta*tri_output
                     loss.backward()
-                    #torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
                     optimizer.step()
                     total_loss += loss.item()
                 #print(f'Epoch = {epoch}, mse loss = {total_loss/len(train_loader)}')

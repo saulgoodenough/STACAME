@@ -178,7 +178,7 @@ class STACAME_processer():
                 adata = sc.read_h5ad(os.path.join(f'{self.root_data_path}{species_id}', section_id + '.h5ad'))
                 print(adata.obsm[self.graph_construct_key].shape)
                 adata.X = csr_matrix(adata.X)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 print('Before flitering: ', adata.shape)
                 sc.pp.filter_genes(adata, min_cells=self.min_cells)
                 print('After flitering: ', adata.shape)
@@ -193,7 +193,7 @@ class STACAME_processer():
             for section_id in section_ids:
                 adata = sc.read_h5ad(os.path.join(f'{self.root_data_path}{species_id}', section_id + '.h5ad'))
                 adata.X = csr_matrix(adata.X)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 print('Before flitering: ', adata.shape)
                 sc.pp.filter_genes(adata, min_cells=self.min_cells)
                 print('After flitering: ', adata.shape)
@@ -239,7 +239,7 @@ class STACAME_processer():
                 # Downsampling the datasets
                 if self.Down_sampling_adata != None and self.Down_sampling_adata < 1:
                     sc.pp.subsample(adata, fraction=self.Down_sampling_adata)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 #sc.pp.filter_genes(adata, min_cells=50)
                 adata.X = csr_matrix(adata.X)
                 adata.obs_names = [x+'_'+species_id + '_' + section_id for x in adata.obs_names]
@@ -1078,7 +1078,7 @@ class STACAME_processer_subgraph():
                 adata = sc.read_h5ad(os.path.join(f'{self.root_data_path}{species_id}', section_id + '.h5ad'))
                 print(adata.obsm[self.graph_construct_key].shape)
                 adata.X = csr_matrix(adata.X)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 print('Before flitering: ', adata.shape)
                 sc.pp.filter_genes(adata, min_cells=20)
                 print('After flitering: ', adata.shape)
@@ -1093,7 +1093,7 @@ class STACAME_processer_subgraph():
             for section_id in section_ids:
                 adata = sc.read_h5ad(os.path.join(f'{self.root_data_path}{species_id}', section_id + '.h5ad'))
                 adata.X = csr_matrix(adata.X)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 print('Before flitering: ', adata.shape)
                 sc.pp.filter_genes(adata, min_cells=20)
                 print('After flitering: ', adata.shape)
@@ -1778,7 +1778,7 @@ class STACAME_processer_subgraph():
                 adata = sc.read_h5ad(os.path.join(f'{self.root_data_path}{species_id}', section_id + '.h5ad'))
                 print(adata.obsm[self.graph_construct_key].shape)
                 adata.X = csr_matrix(adata.X)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 print('Before flitering: ', adata.shape)
                 sc.pp.filter_genes(adata, min_cells=20)
                 print('After flitering: ', adata.shape)
@@ -1793,7 +1793,7 @@ class STACAME_processer_subgraph():
             for section_id in section_ids:
                 adata = sc.read_h5ad(os.path.join(f'{self.root_data_path}{species_id}', section_id + '.h5ad'))
                 adata.X = csr_matrix(adata.X)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 print('Before flitering: ', adata.shape)
                 sc.pp.filter_genes(adata, min_cells=20)
                 print('After flitering: ', adata.shape)
@@ -1842,7 +1842,7 @@ class STACAME_processer_subgraph():
                 # Downsampling the datasets
                 if self.Down_sampling_adata != None and self.Down_sampling_adata < 1:
                     sc.pp.subsample(adata, fraction=self.Down_sampling_adata)
-                #adata.var_names_make_unique(join="++")
+                adata.var_names_make_unique(join="++")
                 # print('Before flitering: ', adata.shape)
                 #sc.pp.filter_genes(adata, min_cells=50)
                 # print('After flitering: ', adata.shape)
