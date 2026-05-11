@@ -6,11 +6,11 @@ pynndescent==0.5.13
 # Batch correction & multi-omics integration
 harmonypy==0.0.10
 scanorama==1.7.4
-scvi-tools==1.4.1
+# scvi-tools==1.4.1
 
 # Deep learning & probabilistic modeling
 torchmetrics==1.8.2
-lightning==2.6.0
+# lightning==2.6.0
 gpytorch==1.14
 
 # Advanced interactive visualization
@@ -28,6 +28,7 @@ scikit-learn==1.7.0
 statsmodels==0.14.4
 networkx==3.5
 tqdm==4.67.1
+scikit-misc
 
 # High-performance computation
 numba==0.61.2
@@ -60,3 +61,4 @@ requests==2.32.3
 ipykernel
 colorcet==3.1.0
 pot
+setuptools==78.1.1

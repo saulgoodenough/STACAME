@@ -949,13 +949,16 @@ class STACAME_processer_subgraph():
                  cross_sections_neibors_K_mnn = 30,
                  cross_species_neibors_K_knn = 1, 
                  Smooth_spatial_neighbors = 2, 
-                 knn_triplets = True, 
+                 knn_triplets = False, 
                  knn_triplets_ratio=0.05, 
                  if_hvg_before_mnn = False, 
                  if_combat_mnn = False, 
                  if_pca_before_mnn = False, 
                  gene_save_path = './output_STACAME/', 
-                 if_integrate_within_species = False, pca_dim_before_mnn = 128, graph_construct_key = 'spatial'):
+                 if_integrate_within_species = False, 
+                 pca_dim_before_mnn = 128, 
+                 graph_construct_key = 'spatial', 
+                 if_return_concat_adata=True):
     
         """ Run the main data preprocess of STACAME, for integrating multiple datasets from multiple species
         Parameters
@@ -1014,22 +1017,15 @@ class STACAME_processer_subgraph():
         self.Smooth_spatial_neighbors = Smooth_spatial_neighbors
         self.knn_triplets = knn_triplets
         self.knn_triplets_ratio = knn_triplets_ratio
-
         self.if_hvg_before_mnn = if_hvg_before_mnn
-
         self.if_combat_mnn = if_combat_mnn
-
         self.if_pca_before_mnn = if_pca_before_mnn
-
         self.total_normalize = total_normalize
-
         self.gene_save_path = gene_save_path
-
         self.if_integrate_within_species = if_integrate_within_species
-
         self.pca_dim = pca_dim_before_mnn
-
         self.graph_construct_key = graph_construct_key
+        self.if_return_concat_adata = if_return_concat_adata
         
         if total_normalize == None:
             self.total_normalize_dict = {}
@@ -2390,53 +2386,63 @@ class STACAME_processer_subgraph():
 
         print('Select homologous HVGS...')
         sc.pp.highly_variable_genes(adata_concat, flavor="seurat_v3", n_top_genes=self.homo_n_top_genes)
-        
+
         df = adata_concat.var['highly_variable']
         homo_gene_ref = df[df == True].index.tolist()
         for species_id, adata in adata_dict.items():
             adata_dict[species_id].uns['homo_highly_variable'] = [gene_map_dict[species_id][g] for g in homo_gene_ref]
-            #print(adata_dict[species_id].uns['homo_highly_variable'][:100])
-        
+
         #############################################################
         ## Reorder the genes such that the homologous genes are aligned well
         print('Reorder the genes such that the homologous genes are aligned well...')
         align_gene_k = 0
         reference_hvg_vec = None
-        hvg_dict = {k:[] for k in adata_dict.keys()}
-        
+        hvg_dict = {k: [] for k in adata_dict.keys()}
+
         gene_cap_upper_dict = self.gene_cap_upper_dict
-        upper2origin_dict = {k:{} for k in adata_dict.keys()}
+        upper2origin_dict = {k: {} for k in adata_dict.keys()}
         for species_id in upper2origin_dict.keys():
-            upper2origin_dict[species_id] = {k:v for k,v in zip([x.upper() for x in adata_dict[species_id].var_names], adata_dict[species_id].var_names)}
-        
+            upper2origin_dict[species_id] = {k: v for k, v in zip([x.upper() for x in adata_dict[species_id].var_names],
+                                                                  adata_dict[species_id].var_names)}
+
         for species_id, adata in adata_dict.items():
             df = adata.var['highly_variable']
             hvg_order = df[df == True].index.tolist()
             hvg_dict[species_id] = [x for x in hvg_order]
             hvg_dict[species_id].sort()
-            #print(hvg_dict[species_id][1:100])
-        
+
         hvg_intersect_set = set()
         for species_id, adata in adata_dict.items():
-            #print(len(hvg_dict[species_id]))
             if align_gene_k == 0:
                 hvg_intersect_set = set([x.upper() for x in hvg_dict[species_id]])
                 align_gene_k += 1
             else:
                 hvg_intersect_set = hvg_intersect_set.intersection(set(hvg_dict[species_id]))
                 align_gene_k += 1
-        
+
         hvg_intersect_set = list(hvg_intersect_set)
         print('Size of hvg intersect set: ', len(hvg_intersect_set))
-        
-        hvg_aligned_dict = {k:[] for k in adata_dict.keys()}
 
-        gene_name_dict = {k:{'species_specific':[], 'homo_highly_variable':[]} for k in adata_dict.keys()}
-        
+        hvg_aligned_dict = {k: [] for k in adata_dict.keys()}
+
+        gene_name_dict = {k: {'species_specific': [], 'homo_highly_variable': []} for k in adata_dict.keys()}
+
         for species_id, adata in adata_dict.items():
             orthlogs = [upper2origin_dict[species_id][x] for x in hvg_intersect_set]
-            hvg_aligned_dict[species_id] = adata_dict[species_id].uns['homo_highly_variable'] + list(set(hvg_dict[species_id]) - set(orthlogs))
+            hvg_aligned_dict[species_id] = adata_dict[species_id].uns['homo_highly_variable'] + list(
+                set(hvg_dict[species_id]) - set(orthlogs))
             adata_dict[species_id].uns['highly_variable'] = hvg_aligned_dict[species_id]
+            adata_dict[species_id].uns['species_specific'] = list(set(hvg_dict[species_id]) - set(orthlogs))
+
+            hvg_genes = adata_dict[species_id].uns['highly_variable']
+            hvg_genes_share = adata_dict[species_id].uns['homo_highly_variable']
+            hvg_genes_specific = adata_dict[species_id].uns['species_specific']
+
+            # adata_dict[species_id].obsm['counts_hvg'] = adata_dict[species_id][:, hvg_genes].layers['counts'].copy()
+            # adata_dict[species_id].obsm['counts_hvg_share'] = adata_dict[species_id][:, hvg_genes_share].layers[
+            #     'counts'].copy()
+            # adata_dict[species_id].obsm['counts_hvg_specific'] = adata_dict[species_id][:, hvg_genes_specific].layers[
+            #     'counts'].copy()
 
             gene_name_dict[species_id]['species_specific'] = list(set(hvg_dict[species_id]) - set(orthlogs))
             gene_name_dict[species_id]['homo_highly_variable'] = adata_dict[species_id].uns['homo_highly_variable']
@@ -2448,12 +2454,84 @@ class STACAME_processer_subgraph():
         #################################################################################
         print('Processing data finished.')
         stop = timeit.default_timer()
-        print('Time used: ', stop - start)  
+        print('Time used: ', stop - start)
 
+        if self.if_return_concat_adata:
+            if self.if_integrate_within_species:
+                return adata_dict, triplet_ind_species_dict, edge_ndarray_species, triplet_ind_sections_dict, edge_ndarray_sections, adata_whole
+            else:
+                return adata_dict, triplet_ind_species_dict, edge_ndarray_species, adata_whole
         if self.if_integrate_within_species:
             return adata_dict, triplet_ind_species_dict, edge_ndarray_species, triplet_ind_sections_dict, edge_ndarray_sections
         else:
             return adata_dict, triplet_ind_species_dict, edge_ndarray_species
+
+        # print('Select homologous HVGS...')
+        # sc.pp.highly_variable_genes(adata_concat, flavor="seurat_v3", n_top_genes=self.homo_n_top_genes)
+        
+        # df = adata_concat.var['highly_variable']
+        # homo_gene_ref = df[df == True].index.tolist()
+        # for species_id, adata in adata_dict.items():
+        #     adata_dict[species_id].uns['homo_highly_variable'] = [gene_map_dict[species_id][g] for g in homo_gene_ref]
+        #     #print(adata_dict[species_id].uns['homo_highly_variable'][:100])
+        
+        # #############################################################
+        # ## Reorder the genes such that the homologous genes are aligned well
+        # print('Reorder the genes such that the homologous genes are aligned well...')
+        # align_gene_k = 0
+        # reference_hvg_vec = None
+        # hvg_dict = {k:[] for k in adata_dict.keys()}
+        
+        # gene_cap_upper_dict = self.gene_cap_upper_dict
+        # upper2origin_dict = {k:{} for k in adata_dict.keys()}
+        # for species_id in upper2origin_dict.keys():
+        #     upper2origin_dict[species_id] = {k:v for k,v in zip([x.upper() for x in adata_dict[species_id].var_names], adata_dict[species_id].var_names)}
+        
+        # for species_id, adata in adata_dict.items():
+        #     df = adata.var['highly_variable']
+        #     hvg_order = df[df == True].index.tolist()
+        #     hvg_dict[species_id] = [x for x in hvg_order]
+        #     hvg_dict[species_id].sort()
+        #     #print(hvg_dict[species_id][1:100])
+        
+        # hvg_intersect_set = set()
+        # for species_id, adata in adata_dict.items():
+        #     #print(len(hvg_dict[species_id]))
+        #     if align_gene_k == 0:
+        #         hvg_intersect_set = set([x.upper() for x in hvg_dict[species_id]])
+        #         align_gene_k += 1
+        #     else:
+        #         hvg_intersect_set = hvg_intersect_set.intersection(set(hvg_dict[species_id]))
+        #         align_gene_k += 1
+        
+        # hvg_intersect_set = list(hvg_intersect_set)
+        # print('Size of hvg intersect set: ', len(hvg_intersect_set))
+        
+        # hvg_aligned_dict = {k:[] for k in adata_dict.keys()}
+
+        # gene_name_dict = {k:{'species_specific':[], 'homo_highly_variable':[]} for k in adata_dict.keys()}
+        
+        # for species_id, adata in adata_dict.items():
+        #     orthlogs = [upper2origin_dict[species_id][x] for x in hvg_intersect_set]
+        #     hvg_aligned_dict[species_id] = adata_dict[species_id].uns['homo_highly_variable'] + list(set(hvg_dict[species_id]) - set(orthlogs))
+        #     adata_dict[species_id].uns['highly_variable'] = hvg_aligned_dict[species_id]
+
+        #     gene_name_dict[species_id]['species_specific'] = list(set(hvg_dict[species_id]) - set(orthlogs))
+        #     gene_name_dict[species_id]['homo_highly_variable'] = adata_dict[species_id].uns['homo_highly_variable']
+
+        # if self.gene_save_path != None:
+        #     if not os.path.exists(self.gene_save_path):
+        #         os.makedirs(self.gene_save_path)
+        #     np.save(self.gene_save_path + 'gene_name_dict.npy', gene_name_dict)
+        # #################################################################################
+        # print('Processing data finished.')
+        # stop = timeit.default_timer()
+        # print('Time used: ', stop - start)  
+
+        # if self.if_integrate_within_species:
+        #     return adata_dict, triplet_ind_species_dict, edge_ndarray_species, triplet_ind_sections_dict, edge_ndarray_sections
+        # else:
+        #     return adata_dict, triplet_ind_species_dict, edge_ndarray_species
 
 
 
