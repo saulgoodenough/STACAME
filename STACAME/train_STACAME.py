@@ -1,4 +1,3 @@
-
 from .STACAME import STACAME
 import torch.backends.cudnn as cudnn
 cudnn.deterministic = True
@@ -34,17 +33,6 @@ def random_list(N, subsampling_rate):
     result = list(set(result))
     result.sort()
     return result
-
-
-
-import numpy as np
-import pandas as pd
-import scanpy as sc
-import anndata as ad
-import matplotlib.pyplot as plt
-import seaborn as sns
-import colorcet as cc
-from collections import Counter
 
 
 def clustering_umap(adata_dict, key_umap='STACAME'):
@@ -97,7 +85,7 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
             if 'annotation' in adata.obs:
                 embedding_annotation = embedding_annotation + list(adata.obs['annotation'])
             else:
-                embedding_annotation = embedding_annotation +  ['None'] * adata.n_obs
+                embedding_annotation = embedding_annotation + ['None'] * adata.n_obs
 
         k += 1
         # Per‑species UMAP (visualization is optional; we skip it here for brevity)
@@ -146,6 +134,8 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
         if n_species == 1:
             axes = [axes]
         for i, species_id in enumerate(species_ids):
+            # 为单个物种子图添加物种名标题
+            axes[i].set_title(species_id)
             adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
             unique_annot = adata_mh.obs['annotation'].unique()
             color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
@@ -159,6 +149,8 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
         if n_species == 1:
             axes = [axes]
         for i, species_id in enumerate(species_ids):
+            # 同样为第二个版本的图添加物种名标题
+            axes[i].set_title(species_id)
             adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
             unique_annot = adata_mh.obs['annotation'].unique()
             color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
@@ -232,11 +224,16 @@ def clustering_umap_downsampling(adata_dict, key_umap='STACAME', downsampling_ra
         plt.rcParams["figure.figsize"] = (3, 3)
         plt.rcParams['font.size'] = 10
         if 'annotation' in adata.obs:
+            # 先不显示，添加物种标题后再显示
             sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation'],
-                       ncols=3, wspace=0.7, show=True)
+                       ncols=3, wspace=0.7, show=False)
         else:
             sc.pl.umap(adata, color=['batch_name', 'leiden'],
-                       ncols=3, wspace=0.7, show=True)
+                       ncols=3, wspace=0.7, show=False)
+        # 为当前物种的单物种 UMAP 图添加标题
+        fig = plt.gcf()
+        fig.suptitle(species_id)
+        plt.show()
 
     adata_embedding = ad.AnnData(X=embedding_X,
                                   obs=pd.DataFrame(index=embedding_obs_name))
@@ -273,6 +270,8 @@ def clustering_umap_downsampling(adata_dict, key_umap='STACAME', downsampling_ra
         if n_species == 1:
             axes = [axes]
         for i, species_id in enumerate(species_ids):
+            # 同样为这个版本的子图添加标题
+            axes[i].set_title(species_id)
             adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
             unique_annot = adata_mh.obs['annotation'].unique()
             color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
@@ -286,6 +285,7 @@ def clustering_umap_downsampling(adata_dict, key_umap='STACAME', downsampling_ra
         if n_species == 1:
             axes = [axes]
         for i, species_id in enumerate(species_ids):
+            axes[i].set_title(species_id)
             adata_mh = adata_embedding[adata_embedding.obs['species_id'] == species_id]
             unique_annot = adata_mh.obs['annotation'].unique()
             color_list = sns.color_palette(cc.glasbey, n_colors=len(unique_annot)).as_hex()
@@ -298,7 +298,502 @@ def clustering_umap_downsampling(adata_dict, key_umap='STACAME', downsampling_ra
     return None
 
 
-## Light version of STACAME without GAN loss and auxiliary model
+# ## Light version of STACAME without GAN loss and auxiliary model
+# def train_STACAME(adata_species_dict,
+#                   triplet_ind_species_dict,
+#                   edge_ndarray_species,
+#                   triplet_ind_sections_dict=None,
+#                   edge_ndarray_sections=None,
+#                   hidden_dims=[512, 30],
+#                   stagate_epoch=500,
+#                   n_epochs_species=2000,
+#                   lr=0.001,
+#                   key_added='STACAME',
+#                   gradient_clipping=5.,
+#                   weight_decay=0.0001,
+#                   lr_wd=0.001,
+#                   weight_decay_wd=5e-4,
+#                   margin=1.0,
+#                   margin_species=1.0,
+#                   lr_species=0.001,
+#                   beta=1,
+#                   verbose=False,
+#                   random_seed=666,
+#                   iter_comb=None,
+#                   knn_neigh=100,
+#                   device=torch.device('cuda:2' if torch.cuda.is_available() else 'cpu'),
+#                   pretrain_device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
+#                   mse_beta=1,
+#                   tri_beta=1,
+#                   mmd_beta=2,
+#                   mmd_batch_size=4000,
+#                   concate_pca_dim = None,
+#                   if_knn_mnn_graph=True,
+#                   if_integrate_within_species=False,
+#                   if_return_loss=False):
+#     """
+#     Train a graph-attention autoencoder and align cross-species spots via
+#     triplet constraints in the latent embedding space.
+
+#     The function first pretrains a STAGATE model for each species individually.
+#     Then, a joint decoder is trained on the concatenated latent representations
+#     using MSE reconstruction loss, cross-species triplet margin loss, optional
+#     within-species slice triplet loss, and a maximum mean discrepancy (MMD) term
+#     that encourages mixing of species in the latent space.
+
+#     Parameters
+#     ----------
+#     adata_species_dict : dict of {str: anndata.AnnData}
+#         Dictionary mapping species names to AnnData objects. Each object must
+#         have ``.X`` (dense or sparse), ``.obs['batch_name']``, ``.uns['edgeList']``,
+#         and optionally ``.var['highly_variable']`` or ``.uns['highly_variable']``.
+#     triplet_ind_species_dict : dict
+#         Cross-species triplet indices with keys ``'anchor_ind_species'``,
+#         ``'positive_ind_species'``, ``'negative_ind_species'``. Each value is
+#         a 1D array of indices into the concatenated spot order.
+#     edge_ndarray_species : np.ndarray
+#         Cross-species mutual nearest neighbour (MNN) graph edges, shape (2, n_edges).
+#     triplet_ind_sections_dict : dict, optional
+#         Within-species slice-level triplet indices with analogous keys
+#         ``'anchor_ind_sections'``, ``'positive_ind_sections'``,
+#         ``'negative_ind_sections'``. Required if ``if_integrate_within_species``
+#         is True.
+#     edge_ndarray_sections : np.ndarray, optional
+#         Within-species slice MNN graph edges, shape (2, n_edges). Required if
+#         ``if_integrate_within_species`` and ``if_knn_mnn_graph`` are both True.
+#     hidden_dims : list of int, optional
+#         Hidden layer dimensions for the encoder and decoder. The first element
+#         is the dimension after the input layer, the second is the bottleneck
+#         dimension.
+#     stagate_epoch : int or dict, optional
+#         Number of pretraining epochs per species. If an int, it is used for all
+#         species; if a dict, it must map species names to epoch counts.
+#     n_epochs_species : int, optional
+#         Number of epochs for the cross-species joint training phase.
+#     lr : float, optional
+#         Learning rate for the per-species STAGATE pretraining.
+#     key_added : str, optional
+#         Key under which the final latent embedding is stored in
+#         ``adata_species_dict[species].obsm``.
+#     gradient_clipping : float, optional
+#         Maximum gradient norm for clipping during joint training.
+#     weight_decay : float, optional
+#         Weight decay for the Adam optimiser during pretraining.
+#     lr_wd : float, optional
+#         (Unused in this light version; kept for compatibility.)
+#     weight_decay_wd : float, optional
+#         (Unused in this light version; kept for compatibility.)
+#     margin : float, optional
+#         Margin for the within-species slice triplet loss.
+#     margin_species : float, optional
+#         Margin for the cross-species triplet loss.
+#     lr_species : float, optional
+#         Learning rate for the joint cross-species training phase.
+#     beta : float, optional
+#         Weight of the within-species slice triplet loss in the total loss
+#         (only active when ``if_integrate_within_species==True``).
+#     verbose : bool, optional
+#         If True, log training progress every 100 epochs.
+#     random_seed : int, optional
+#         Random seed for reproducibility.
+#     iter_comb : tuple or None, optional
+#         (Reserved for multi-batch ordering; unused in the light version.)
+#     knn_neigh : int, optional
+#         Number of nearest neighbours used when constructing MNN graphs.
+#     device : torch.device, optional
+#         Device for the cross-species training.
+#     pretrain_device : torch.device, optional
+#         Device for the per-species pretraining.
+#     mse_beta : float, optional
+#         Weight of the MSE reconstruction loss.
+#     tri_beta : float, optional
+#         Weight of the cross-species triplet loss.
+#     mmd_beta : float, optional
+#         Weight of the MMD loss.
+#     mmd_batch_size : int, optional
+#         Batch size used for MMD computation.
+#     if_knn_mnn_graph : bool, optional
+#         If True, add cross-species MNN edges to the combined adjacency graph.
+#     if_integrate_within_species : bool, optional
+#         If True, enable within-species slice integration using additional
+#         triplet constraints.
+#     if_return_loss : bool, optional
+#         If True, return a dictionary recording loss values over epochs.
+
+#     Returns
+#     -------
+#     adata_species_dict : dict
+#         The input dictionary with the final embedding stored in
+#         ``obsm[key_added]`` for each species.
+#     loss_dict : dict, optional
+#         Only returned if ``if_return_loss=True``. Contains keys:
+#         ``'Loss name'``, ``'Epoch'``, ``'Loss value'``, each a list of
+#         recorded values at every epoch.
+#     """
+
+#     # ---------- Reproducibility and GPU cleanup ----------
+#     import gc
+#     if torch.cuda.is_available():
+#         torch.cuda.empty_cache()
+#     gc.collect()
+
+#     seed = random_seed
+#     random.seed(seed)
+#     torch.manual_seed(seed)
+#     torch.cuda.manual_seed_all(seed)
+#     np.random.seed(seed)
+#     torch.autograd.set_detect_anomaly(True)
+
+#     os.environ['PYTHONHASHSEED'] = str(seed)
+#     torch.cuda.manual_seed(seed)
+#     random.seed(seed)
+#     torch.backends.cudnn.enabled = True
+
+#     torch.backends.cudnn.deterministic = True
+#     torch.backends.cudnn.benchmark = False
+#     os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+#     torch.use_deterministic_algorithms(True)
+
+#     # Allow species-specific pretraining epochs if a dict is provided
+#     if not isinstance(stagate_epoch, dict):
+#         stagate_epoch_dict = {k: stagate_epoch for k in adata_species_dict.keys()}
+#     else:
+#         stagate_epoch_dict = stagate_epoch
+
+#     # ---------- Per-species STAGATE pretraining ----------
+#     z_dict = {k: 0 for k in adata_species_dict.keys()}
+#     species_order = 0
+#     for species_id, adata in adata_species_dict.items():
+#         section_ids = np.array(adata.obs['batch_name'].unique())
+#         edgeList = adata.uns['edgeList']
+#         if 'highly_variable' in adata.var.columns:
+#             adata = adata[:, adata.uns['highly_variable']]
+#         print(f'For {species_id}, using {len(adata.var_names)} genes for training.')
+#         # Convert to PyG Data object
+#         data = Data(edge_index=torch.LongTensor(np.array([edgeList[0], edgeList[1]])),
+#                     prune_edge_index=torch.LongTensor(np.array([])),
+#                     x=torch.FloatTensor(adata.X.todense()))
+#         data = data.to(pretrain_device)
+
+#         if species_order == 0:
+#             # Instantiate the STAGATE model (encoder + decoder)
+#             model = STACAME.STACAME(hidden_dims=[data.x.shape[1], hidden_dims[0], hidden_dims[1]]).to(pretrain_device)
+#             optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay, foreach=False)
+#         species_order += 1
+
+#         print('Pretrain with STAGATE_multiple...')
+#         for epoch in tqdm(range(0, stagate_epoch_dict[species_id])):
+#             model.train()
+#             optimizer.zero_grad()
+#             z, out = model(data.x, data.edge_index)
+#             loss = F.mse_loss(data.x, out)
+#             loss.backward(retain_graph=True)
+#             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.)
+#             optimizer.step()
+#         print(f'mse loss = {loss.item():.4f}')
+#         # Store the pretrained latent representations
+#         with torch.no_grad():
+#             z, _ = model(data.x, data.edge_index)
+#         adata_species_dict[species_id].obsm['STAGATE'] = z.cpu().detach().numpy()
+#         z_dict[species_id] = z.cpu().detach()
+
+#         # Free memory after the last species is pretrained
+#         if species_order >= len(adata_species_dict.keys()):
+#             del model, optimizer, data, z, out
+#             if torch.cuda.is_available():
+#                 torch.cuda.empty_cache()
+#             gc.collect()
+
+#     print('-------------------------------------------------------------------------------')
+#     print('Train with STACAME...')
+#     anchor_ind_species = triplet_ind_species_dict['anchor_ind_species']
+#     positive_ind_species = triplet_ind_species_dict['positive_ind_species']
+#     negative_ind_species = triplet_ind_species_dict['negative_ind_species']
+
+#     # ---------- Build concatenated graph and feature matrix ----------
+#     # Compute offsets for spot indices from different species
+#     k_add = 0
+#     species_add_dict = {k: None for k in z_dict.keys()}
+#     for species_id in z_dict.keys():
+#         species_add_dict[species_id] = int(k_add)
+#         k_add = int(k_add + adata_species_dict[species_id].n_obs)
+
+#     # Concatenate within-species edges
+#     adata = adata_species_dict[list(adata_species_dict.keys())[0]]
+#     edgeList = adata.uns['edgeList']
+#     edge_ndarray = np.array([edgeList[0], edgeList[1]])
+#     S = 0
+#     for species_id, adata in adata_species_dict.items():
+#         section_ids = np.array(adata.obs['batch_name'].unique())
+#         edgeList = adata.uns['edgeList']
+#         if S != 0:
+#             edge_arr_temp = np.array([edgeList[0], edgeList[1]]) + species_add_dict[species_id]
+#             edge_ndarray = np.concatenate((edge_ndarray, edge_arr_temp), axis=1)
+#         else:
+#             S = S + 1
+#     edge_ndarray_species = np.array([edge_ndarray_species[0], edge_ndarray_species[1]])
+
+#     # Optionally include cross-species MNN edges in the graph
+#     if if_knn_mnn_graph:
+#         edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_species), axis=1)
+
+#     # Concatenate pretrained latent vectors
+#     S = 0
+#     for species_id, z_input in z_dict.items():
+#         if S == 0:
+#             X = z_dict[species_id].cpu().detach().numpy()
+#         else:
+#             X = np.concatenate((X, z_dict[species_id].cpu().detach().numpy()), axis=0)
+#         S = S + 1
+
+#     # ---------- Prepare original gene expression for MSE loss ----------
+#     print('Pretrain with STAGATE_multiple...')
+#     print('Train with cross species STACAME...')
+#     cosine_loss = torch.nn.CosineEmbeddingLoss(reduction='mean')
+#     L1_loss = torch.nn.HuberLoss()
+#     z = torch.FloatTensor(X)
+
+#     # Record per-species gene ranges to split the output (optional for later use)
+#     # species_gene_ranges = {}
+#     # current_gene_idx = 0
+#     # S = 0
+#     # for species_id, adata in adata_species_dict.items():
+#     #     if 'highly_variable' in adata.var.columns:
+#     #         sub_adata = adata[:, adata.uns['highly_variable']]
+#     #     else:
+#     #         sub_adata = adata
+#     #     x = sub_adata.X.todense()
+#     #     n_genes = x.shape[1]
+#     #     species_gene_ranges[species_id] = (current_gene_idx, current_gene_idx + n_genes)
+#     #     current_gene_idx += n_genes
+#     #     if S != 0:
+#     #         merge_X = np.concatenate((merge_X, x), axis=0)
+#     #     else:
+#     #         merge_X = x
+#     #         S = S + 1
+
+#     species_list = list(adata_species_dict.keys())
+#     n_species = len(species_list)
+#     # 先获取同源高变基因的数量（所有物种共享，列数固定）
+#     # 取第一个物种的同源高变基因数量作为基准（假设所有物种同源基因数量一致）
+#     ref_species = species_list[0]
+#     n_homo_genes = len(adata_species_dict[ref_species].uns['homo_highly_variable'])
+#     # 获取每个物种的特异基因数量
+#     species_specific_n_genes = {
+#         sp: len(adata_species_dict[sp].uns['species_specific'])
+#         for sp in species_list
+#     }
+#     max_specific_genes = max(species_specific_n_genes.values())  # 特异基因最大数量（统一对角块大小）
+#     # 计算总列数：同源基因数 + 特异基因最大数量 × 物种数
+#     total_cols = n_homo_genes + max_specific_genes * n_species
+#     # 初始化merge矩阵和mask矩阵
+#     merge_X = None
+#     mask_matrix = None
+#     # 2. 逐物种构建矩阵
+#     for sp_idx, species_id in enumerate(species_list):
+#         adata = adata_species_dict[species_id]
+#         # -------------------------- 提取基因表达矩阵 --------------------------
+#         # 同源高变基因部分（列对齐）
+#         homo_genes = adata.uns['homo_highly_variable']
+#         x_homo = adata[:, homo_genes].X.todense()  # shape: (n_cells, n_homo_genes)
+#         # 物种特异基因部分
+#         specific_genes = adata.uns['species_specific']
+#         x_specific = adata[:, specific_genes].X.todense()  # shape: (n_cells, n_specific_genes)
+#         # -------------------------- 构建当前物种的完整行矩阵 --------------------------
+#         n_cells = x_homo.shape[0]
+#         # 初始化当前物种的行矩阵（全0）
+#         x_current = np.zeros((n_cells, total_cols))
+#         mask_current = np.zeros((n_cells, total_cols))  # 当前物种的mask行
+#         # 填充同源基因部分（前n_homo_genes列）
+#         mask_current[:, :n_homo_genes] = 1  # 同源区域mask为1
+#         # 填充特异基因部分（对角分块）
+#         # 特异基因起始列：n_homo_genes + sp_idx * max_specific_genes
+#         specific_start_col = n_homo_genes + sp_idx * max_specific_genes
+#         specific_end_col = specific_start_col + species_specific_n_genes[species_id]
+#         mask_current[:, specific_start_col:specific_end_col] = 1  # 特异区域mask为1
+#         # -------------------------- 纵向拼接所有物种 --------------------------
+#         if merge_X is None:
+#             merge_X = x_current
+#             mask_matrix = mask_current
+#         else:
+#             merge_X = np.concatenate((merge_X, x_current), axis=0)
+#             mask_matrix = np.concatenate((mask_matrix, mask_current), axis=0)
+
+#     if concate_pca_dim != None:
+#         adata_X = ad.AnnData(merge_X)
+#         sc.pp.scale(adata_X)
+#         sc.tl.pca(adata_X, n_comps=concate_pca_dim)
+#         merge_X = adata_X.obsm["X_pca"]
+#     merge_X = torch.FloatTensor(merge_X).to(device)
+#     #merge_X = torch.FloatTensor(merge_X).to(device)
+
+#     # ---------- Joint decoder and optimiser ----------
+#     model = STACAME.STACAME_Decoder(hidden_dims=[merge_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
+#     optimizer = torch.optim.Adam(model.parameters(), lr=lr_species, weight_decay=weight_decay, foreach=False)
+
+#     # Optionally add within-species slice edges and triplet indices
+#     if if_integrate_within_species:
+#         anchor_ind_sections = triplet_ind_sections_dict['anchor_ind_sections']
+#         positive_ind_sections = triplet_ind_sections_dict['positive_ind_sections']
+#         negative_ind_sections = triplet_ind_sections_dict['negative_ind_sections']
+#         if if_knn_mnn_graph:
+#             edge_ndarray_sections = np.array([edge_ndarray_sections[0], edge_ndarray_sections[1]])
+#             edge_ndarray = np.concatenate((edge_ndarray, edge_ndarray_sections), axis=1)
+#         data = Data(edge_index=torch.LongTensor(edge_ndarray),
+#                     prune_edge_index=torch.LongTensor(np.array([])), x=z)
+#         data = data.to(device)
+#     else:
+#         data = Data(edge_index=torch.LongTensor(edge_ndarray),
+#                     prune_edge_index=torch.LongTensor(np.array([])), x=z)
+#         data = data.to(device)
+
+#     if if_return_loss:
+#         loss_dict = {'Loss name': [], 'Epoch': [], 'Loss value': []}
+
+#     plot_epoch = n_epochs_species // 3
+#     scheduler = StepLR(optimizer, step_size=1000, gamma=1)
+
+#     # ---------- Cross-species training loop ----------
+#     for epoch in tqdm(range(0, n_epochs_species)):
+#         current_seed = random_seed + epoch
+#         random.seed(current_seed)
+#         np.random.seed(current_seed)
+#         torch.manual_seed(current_seed)
+
+#         # Update per-species latent arrays in adata (inplace for downstream analysis)
+#         k_add = 0
+#         for species_id in z_dict.keys():
+#             species_add_dict[species_id] = int(k_add)
+#             adata_species_dict[species_id].obsm['STAGATE'] = z[k_add:int(k_add + adata_species_dict[species_id].n_obs),
+#                                                              :].cpu().detach().numpy()
+#             z_dict[species_id] = adata_species_dict[species_id].obsm['STAGATE']
+#             k_add = int(k_add + adata_species_dict[species_id].n_obs)
+
+#         model.train()
+#         optimizer.zero_grad()
+#         z, out = model(data.x, data.edge_index)
+
+#         # 1) MSE reconstruction loss on the original gene expression
+#         mse_loss = F.mse_loss(merge_X, out)
+
+#         # 2) Within-species slice triplet loss (optional)
+#         if if_integrate_within_species:
+#             anchor_arr = z[anchor_ind_sections,]
+#             positive_arr = z[positive_ind_sections,]
+#             negative_arr = z[negative_ind_sections,]
+#             triplet_loss = torch.nn.TripletMarginLoss(margin=margin, p=2, reduction='mean')
+#             tri_output = triplet_loss(anchor_arr, positive_arr, negative_arr)
+#         else:
+#             tri_output = torch.tensor(0.0, device=device)
+
+#         # 3) Cross-species triplet loss
+#         anchor_arr_species = z[anchor_ind_species,]
+#         positive_arr_species = z[positive_ind_species,]
+#         negative_arr_species = z[negative_ind_species,]
+#         triplet_loss_species = torch.nn.TripletMarginLoss(margin=margin_species, p=2, reduction='mean')
+#         tri_output_species = triplet_loss_species(anchor_arr_species, positive_arr_species, negative_arr_species)
+
+#         # 4) Maximum mean discrepancy (MMD) loss to mix species in latent space
+#         mmd_loss = STACAME.MMDLoss(kernel=STACAME.RBF(device=device), device=device).to(device)
+#         mmd_loss_sum = 0
+#         for species_id in z_dict.keys():
+#             k_add = species_add_dict[species_id]
+#             remain_list = list(
+#                 set(list(range(z.shape[0]))) - set(range(k_add, int(k_add + adata_species_dict[species_id].n_obs))))
+#             random.seed(epoch)
+#             ind_1 = random.sample(list(range(k_add, int(k_add + adata_species_dict[species_id].n_obs))), mmd_batch_size)
+#             ind_2 = random.sample(remain_list, mmd_batch_size)
+#             mmd_loss_sum = mmd_loss_sum + mmd_loss(z[ind_1,].to(device), z[ind_2,].to(device)).to(device)
+
+#         sampling_num_spe = anchor_arr_species.shape[0]
+
+#         # Combine losses with weights
+#         if if_integrate_within_species:
+#             loss = (mse_beta * mse_loss
+#                     + tri_beta * tri_output_species
+#                     + beta * tri_output
+#                     + mmd_beta * mmd_loss_sum)
+#         else:
+#             loss = (mse_beta * mse_loss
+#                     + tri_beta * tri_output_species
+#                     + mmd_beta * mmd_loss_sum)
+
+#         loss.backward(retain_graph=True)
+#         optimizer.step()
+#         scheduler.step()
+
+#         # ---------- Record losses ----------
+#         if if_return_loss:
+#             loss_dict['Loss name'].append('Loss sum')
+#             loss_dict['Epoch'].append(epoch)
+#             loss_dict['Loss value'].append(loss.item())
+#             loss_dict['Loss name'].append('MSE')
+#             loss_dict['Epoch'].append(epoch)
+#             loss_dict['Loss value'].append(mse_loss.item())
+#             loss_dict['Loss name'].append('Cross-species triplet')
+#             loss_dict['Epoch'].append(epoch)
+#             loss_dict['Loss value'].append(tri_output_species.item())
+#             loss_dict['Loss name'].append('MMD')
+#             loss_dict['Epoch'].append(epoch)
+#             loss_dict['Loss value'].append(mmd_loss_sum.item())
+
+#         # ---------- Logging ----------
+#         if verbose and epoch % 100 == 0:
+#             # Compute cosine similarity for monitoring (does not affect training)
+#             cos_sim = cosine_loss(anchor_arr_species, positive_arr_species,
+#                                   torch.ones(sampling_num_spe).to(device)).item()
+#             print(f'---------------------------------Epoch {epoch:4d}-----------------------------------')
+#             print(f'Total loss: {loss.item():.4f}',
+#                   f'MSE (weighted) : {mse_beta * mse_loss.item():.4f}',
+#                   f'Cross-species Tri: {tri_beta * tri_output_species.item():.4f}',
+#                   f'MMD (weighted): {mmd_beta * mmd_loss_sum.item():.4f}')
+#             if if_integrate_within_species:
+#                 print(f'Cross-slices Tri: {beta * tri_output.item():.4f}',
+#                       f'Cosine sim (mon.): {cos_sim:.4f}')
+#                 if if_return_loss:
+#                     loss_dict['Loss name'].append('Cross-slices triplet')
+#                     loss_dict['Epoch'].append(epoch)
+#                     loss_dict['Loss value'].append(tri_output.item())
+#             current_lr = scheduler.get_last_lr()[0]
+#             print(f'  Learning rate     : {current_lr:.6f}')
+
+#         torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clipping)
+
+#         # Update the final embedding in adata objects
+#         for species_id in z_dict.keys():
+#             k_add = species_add_dict[species_id]
+#             adata_species_dict[species_id].obsm[key_added] = z[k_add:int(k_add + adata_species_dict[species_id].n_obs),
+#                                                              :].cpu().detach().numpy()
+
+#         # Periodic UMAP visualisation
+#         if verbose and epoch % plot_epoch == 0 and n_epochs_species - epoch >= plot_epoch:
+#             if z.shape[0] >= 50000:
+#                 clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate=0.1)
+#             else:
+#                 clustering_umap(adata_species_dict, key_umap=key_added)
+
+#     print('Clustering and UMAP of Cross Species STACAME:')
+#     if z.shape[0] >= 50000:
+#         clustering_umap_downsampling(adata_species_dict, key_umap=key_added, downsampling_rate=0.1)
+#     else:
+#         clustering_umap(adata_species_dict, key_umap=key_added)
+
+#     # ---------- Finalise and cleanup ----------
+#     with torch.no_grad():
+#         z_final, out_final = model(data.x, data.edge_index)
+#         out_np = out_final.cpu().detach().numpy()
+#     # (out_np can be used for downstream analysis if needed)
+
+#     del model, optimizer, data
+#     if torch.cuda.is_available():
+#         torch.cuda.empty_cache()
+#     gc.collect()
+
+#     if if_return_loss:
+#         return adata_species_dict, loss_dict
+#     return adata_species_dict
+
+
 def train_STACAME(adata_species_dict,
                   triplet_ind_species_dict,
                   edge_ndarray_species,
@@ -327,10 +822,14 @@ def train_STACAME(adata_species_dict,
                   tri_beta=1,
                   mmd_beta=2,
                   mmd_batch_size=4000,
-                  concate_pca_dim = None,
+                  concate_pca_dim=None,
                   if_knn_mnn_graph=True,
                   if_integrate_within_species=False,
-                  if_return_loss=False):
+                  if_return_loss=False,
+                  # ----- 新增参数 -----
+                  structure_beta=0.0,            # 几何结构损失权重，0 表示不使用
+                  structure_sampling_ratio=1.0,  # 物种内边的采样比例 (1.0 = 全部)
+                  max_structure_edges=10000):    # 每轮最多使用的物种内边数量
     """
     Train a graph-attention autoencoder and align cross-species spots via
     triplet constraints in the latent embedding space.
@@ -338,8 +837,11 @@ def train_STACAME(adata_species_dict,
     The function first pretrains a STAGATE model for each species individually.
     Then, a joint decoder is trained on the concatenated latent representations
     using MSE reconstruction loss, cross-species triplet margin loss, optional
-    within-species slice triplet loss, and a maximum mean discrepancy (MMD) term
-    that encourages mixing of species in the latent space.
+    within-species slice triplet loss, a maximum mean discrepancy (MMD) term
+    that encourages mixing of species in the latent space, and an optional
+    geometric structure preservation loss that keeps the local adjacency
+    structure of each species consistent between original expression and
+    latent embeddings.
 
     Parameters
     ----------
@@ -429,6 +931,24 @@ def train_STACAME(adata_species_dict,
         Only returned if ``if_return_loss=True``. Contains keys:
         ``'Loss name'``, ``'Epoch'``, ``'Loss value'``, each a list of
         recorded values at every epoch.
+    structure_beta : float, optional
+        Weight of the per-species geometric structure preservation loss.
+        Set to 0 to disable this loss. Default is 0.
+    structure_sampling_ratio : float, optional
+        Fraction of intra-species edges to sample when computing the structure
+        loss. Use a value < 1.0 to reduce memory usage. Default is 1.0 (use all).
+    max_structure_edges : int, optional
+        Upper bound on the number of intra-species edges used in a single
+        epoch for the structure loss. Ignored if the number of available
+        intra-species edges is smaller. Default is 10000.
+
+    Returns
+    -------
+    adata_species_dict : dict
+        The input dictionary with the final embedding stored in
+        ``obsm[key_added]`` for each species.
+    loss_dict : dict, optional
+        Only returned if ``if_return_loss=True``.
     """
 
     # ---------- Reproducibility and GPU cleanup ----------
@@ -553,65 +1073,35 @@ def train_STACAME(adata_species_dict,
     L1_loss = torch.nn.HuberLoss()
     z = torch.FloatTensor(X)
 
-    # Record per-species gene ranges to split the output (optional for later use)
-    # species_gene_ranges = {}
-    # current_gene_idx = 0
-    # S = 0
-    # for species_id, adata in adata_species_dict.items():
-    #     if 'highly_variable' in adata.var.columns:
-    #         sub_adata = adata[:, adata.uns['highly_variable']]
-    #     else:
-    #         sub_adata = adata
-    #     x = sub_adata.X.todense()
-    #     n_genes = x.shape[1]
-    #     species_gene_ranges[species_id] = (current_gene_idx, current_gene_idx + n_genes)
-    #     current_gene_idx += n_genes
-    #     if S != 0:
-    #         merge_X = np.concatenate((merge_X, x), axis=0)
-    #     else:
-    #         merge_X = x
-    #         S = S + 1
-
     species_list = list(adata_species_dict.keys())
     n_species = len(species_list)
-    # 先获取同源高变基因的数量（所有物种共享，列数固定）
-    # 取第一个物种的同源高变基因数量作为基准（假设所有物种同源基因数量一致）
     ref_species = species_list[0]
     n_homo_genes = len(adata_species_dict[ref_species].uns['homo_highly_variable'])
-    # 获取每个物种的特异基因数量
     species_specific_n_genes = {
         sp: len(adata_species_dict[sp].uns['species_specific'])
         for sp in species_list
     }
-    max_specific_genes = max(species_specific_n_genes.values())  # 特异基因最大数量（统一对角块大小）
-    # 计算总列数：同源基因数 + 特异基因最大数量 × 物种数
+    max_specific_genes = max(species_specific_n_genes.values())
     total_cols = n_homo_genes + max_specific_genes * n_species
-    # 初始化merge矩阵和mask矩阵
     merge_X = None
     mask_matrix = None
-    # 2. 逐物种构建矩阵
+
     for sp_idx, species_id in enumerate(species_list):
         adata = adata_species_dict[species_id]
-        # -------------------------- 提取基因表达矩阵 --------------------------
-        # 同源高变基因部分（列对齐）
         homo_genes = adata.uns['homo_highly_variable']
-        x_homo = adata[:, homo_genes].X.todense()  # shape: (n_cells, n_homo_genes)
-        # 物种特异基因部分
+        x_homo = adata[:, homo_genes].X.todense()
         specific_genes = adata.uns['species_specific']
-        x_specific = adata[:, specific_genes].X.todense()  # shape: (n_cells, n_specific_genes)
-        # -------------------------- 构建当前物种的完整行矩阵 --------------------------
+        x_specific = adata[:, specific_genes].X.todense()
         n_cells = x_homo.shape[0]
-        # 初始化当前物种的行矩阵（全0）
         x_current = np.zeros((n_cells, total_cols))
-        mask_current = np.zeros((n_cells, total_cols))  # 当前物种的mask行
-        # 填充同源基因部分（前n_homo_genes列）
-        mask_current[:, :n_homo_genes] = 1  # 同源区域mask为1
-        # 填充特异基因部分（对角分块）
-        # 特异基因起始列：n_homo_genes + sp_idx * max_specific_genes
+        mask_current = np.zeros((n_cells, total_cols))
+        x_current[:, :n_homo_genes] = x_homo
+        mask_current[:, :n_homo_genes] = 1
         specific_start_col = n_homo_genes + sp_idx * max_specific_genes
         specific_end_col = specific_start_col + species_specific_n_genes[species_id]
-        mask_current[:, specific_start_col:specific_end_col] = 1  # 特异区域mask为1
-        # -------------------------- 纵向拼接所有物种 --------------------------
+        x_current[:, specific_start_col:specific_end_col] = x_specific
+        mask_current[:, specific_start_col:specific_end_col] = 1
+
         if merge_X is None:
             merge_X = x_current
             mask_matrix = mask_current
@@ -619,13 +1109,12 @@ def train_STACAME(adata_species_dict,
             merge_X = np.concatenate((merge_X, x_current), axis=0)
             mask_matrix = np.concatenate((mask_matrix, mask_current), axis=0)
 
-    if concate_pca_dim != None:
+    if concate_pca_dim is not None:
         adata_X = ad.AnnData(merge_X)
         sc.pp.scale(adata_X)
         sc.tl.pca(adata_X, n_comps=concate_pca_dim)
         merge_X = adata_X.obsm["X_pca"]
     merge_X = torch.FloatTensor(merge_X).to(device)
-    #merge_X = torch.FloatTensor(merge_X).to(device)
 
     # ---------- Joint decoder and optimiser ----------
     model = STACAME.STACAME_Decoder(hidden_dims=[merge_X.shape[1], hidden_dims[0], hidden_dims[1]]).to(device)
@@ -647,6 +1136,28 @@ def train_STACAME(adata_species_dict,
                     prune_edge_index=torch.LongTensor(np.array([])), x=z)
         data = data.to(device)
 
+    # ---------- 预先提取物种内边（用于几何结构损失） ----------
+    intra_edges = None
+    if structure_beta != 0.0:
+        # 构建 node -> species 的映射
+        total_nodes = z.shape[0]
+        node_species = -1 * np.ones(total_nodes, dtype=np.int64)
+        for sp_idx, species_id in enumerate(adata_species_dict.keys()):
+            start = species_add_dict[species_id]
+            n_cells = adata_species_dict[species_id].n_obs
+            node_species[start:start+n_cells] = sp_idx
+
+        # 筛选边：两端标签相同即为物种内部边
+        edge_index_cpu = data.edge_index.cpu().numpy()
+        src, dst = edge_index_cpu[0], edge_index_cpu[1]
+        mask = (node_species[src] == node_species[dst])
+        intra_edges_np = edge_index_cpu[:, mask]
+        print(f'[GeomStructure] Found {intra_edges_np.shape[1]} intra-species edges '
+              f'(out of {edge_index_cpu.shape[1]} total).')
+
+        if intra_edges_np.shape[1] > 0:
+            intra_edges = torch.LongTensor(intra_edges_np).to(device)
+
     if if_return_loss:
         loss_dict = {'Loss name': [], 'Epoch': [], 'Loss value': []}
 
@@ -660,7 +1171,7 @@ def train_STACAME(adata_species_dict,
         np.random.seed(current_seed)
         torch.manual_seed(current_seed)
 
-        # Update per-species latent arrays in adata (inplace for downstream analysis)
+        # Update per-species latent arrays in adata
         k_add = 0
         for species_id in z_dict.keys():
             species_add_dict[species_id] = int(k_add)
@@ -673,7 +1184,7 @@ def train_STACAME(adata_species_dict,
         optimizer.zero_grad()
         z, out = model(data.x, data.edge_index)
 
-        # 1) MSE reconstruction loss on the original gene expression
+        # 1) MSE reconstruction loss
         mse_loss = F.mse_loss(merge_X, out)
 
         # 2) Within-species slice triplet loss (optional)
@@ -693,7 +1204,7 @@ def train_STACAME(adata_species_dict,
         triplet_loss_species = torch.nn.TripletMarginLoss(margin=margin_species, p=2, reduction='mean')
         tri_output_species = triplet_loss_species(anchor_arr_species, positive_arr_species, negative_arr_species)
 
-        # 4) Maximum mean discrepancy (MMD) loss to mix species in latent space
+        # 4) MMD loss
         mmd_loss = STACAME.MMDLoss(kernel=STACAME.RBF(device=device), device=device).to(device)
         mmd_loss_sum = 0
         for species_id in z_dict.keys():
@@ -705,18 +1216,41 @@ def train_STACAME(adata_species_dict,
             ind_2 = random.sample(remain_list, mmd_batch_size)
             mmd_loss_sum = mmd_loss_sum + mmd_loss(z[ind_1,].to(device), z[ind_2,].to(device)).to(device)
 
+        # 5) Per-species geometric structure preservation loss (新增)
+        geom_structure_loss = torch.tensor(0.0, device=device)
+        if structure_beta != 0.0 and intra_edges is not None:
+            num_intra = intra_edges.shape[1]
+            if num_intra > 0:
+                n_sample = min(num_intra, max_structure_edges)
+                if n_sample < num_intra:
+                    perm = torch.randperm(num_intra, device=device)[:n_sample]
+                    sampled_edges = intra_edges[:, perm]
+                else:
+                    sampled_edges = intra_edges
+                src, dst = sampled_edges[0], sampled_edges[1]
+                # 隐空间距离，除以维度进行归一化
+                z_src, z_dst = z[src], z[dst]
+                z_dist = torch.sum((z_src - z_dst) ** 2, dim=1) / z.shape[1]
+                # 原始空间距离（使用 merge_X，阻断梯度）
+                x_src = merge_X[src].detach()
+                x_dst = merge_X[dst].detach()
+                x_dist = torch.sum((x_src - x_dst) ** 2, dim=1) / merge_X.shape[1]
+                geom_structure_loss = F.mse_loss(z_dist, x_dist)
+
         sampling_num_spe = anchor_arr_species.shape[0]
 
-        # Combine losses with weights
+        # Compose total loss (with optional structure loss)
         if if_integrate_within_species:
             loss = (mse_beta * mse_loss
                     + tri_beta * tri_output_species
                     + beta * tri_output
-                    + mmd_beta * mmd_loss_sum)
+                    + mmd_beta * mmd_loss_sum
+                    + structure_beta * geom_structure_loss)
         else:
             loss = (mse_beta * mse_loss
                     + tri_beta * tri_output_species
-                    + mmd_beta * mmd_loss_sum)
+                    + mmd_beta * mmd_loss_sum
+                    + structure_beta * geom_structure_loss)
 
         loss.backward(retain_graph=True)
         optimizer.step()
@@ -736,10 +1270,13 @@ def train_STACAME(adata_species_dict,
             loss_dict['Loss name'].append('MMD')
             loss_dict['Epoch'].append(epoch)
             loss_dict['Loss value'].append(mmd_loss_sum.item())
+            if structure_beta != 0.0:
+                loss_dict['Loss name'].append('GeomStructure')
+                loss_dict['Epoch'].append(epoch)
+                loss_dict['Loss value'].append(geom_structure_loss.item())
 
         # ---------- Logging ----------
         if verbose and epoch % 100 == 0:
-            # Compute cosine similarity for monitoring (does not affect training)
             cos_sim = cosine_loss(anchor_arr_species, positive_arr_species,
                                   torch.ones(sampling_num_spe).to(device)).item()
             print(f'---------------------------------Epoch {epoch:4d}-----------------------------------')
@@ -754,6 +1291,8 @@ def train_STACAME(adata_species_dict,
                     loss_dict['Loss name'].append('Cross-slices triplet')
                     loss_dict['Epoch'].append(epoch)
                     loss_dict['Loss value'].append(tri_output.item())
+            if structure_beta != 0.0:
+                print(f'GeomStruc (weighted): {structure_beta * geom_structure_loss.item():.4f}')
             current_lr = scheduler.get_last_lr()[0]
             print(f'  Learning rate     : {current_lr:.6f}')
 
@@ -782,7 +1321,6 @@ def train_STACAME(adata_species_dict,
     with torch.no_grad():
         z_final, out_final = model(data.x, data.edge_index)
         out_np = out_final.cpu().detach().numpy()
-    # (out_np can be used for downstream analysis if needed)
 
     del model, optimizer, data
     if torch.cuda.is_available():
@@ -792,7 +1330,6 @@ def train_STACAME(adata_species_dict,
     if if_return_loss:
         return adata_species_dict, loss_dict
     return adata_species_dict
-
 
 
 
@@ -2268,6 +2805,8 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
     return adata_species_dict
 '''
 
+
+
 def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                      triplet_ind_species_dict,
                                      edge_ndarray_species,
@@ -2312,11 +2851,115 @@ def train_STACAME_subgraph_auxiliary(adata_species_dict,
                                      structure_beta=0.0,
                                      structure_sampling_ratio=1.0):
     """
-    ... (原文档字符串不变，可在此略作补充说明新增参数) ...
+     Subgraph‑based training of STACAME with GAN loss and an auxiliary model.
+
+    This function performs cross‑species spatial transcriptomics integration
+    using a graph‑attention auto‑encoder. It first pretrains a STAGATE model
+    per species (with optional mini‑batch training), then jointly trains a
+    primary decoder and an auxiliary model on concatenated data containing
+    multiple species. The training leverages subgraph sampling to handle
+    large‑scale datasets and incorporates several loss components:
+    - MSE reconstruction loss (primary + auxiliary)
+    - Cross‑species triplet loss
+    - Within‑species slice triplet loss (optional)
+    - Maximum Mean Discrepancy (MMD) loss
+    - GAN‑based domain confusion loss (optional)
+    - Unbalanced optimal transport (OT) loss (optional)
+
+    Parameters
+    ----------
+    adata_species_dict : dict
+        Dictionary mapping species names to AnnData objects.
+    triplet_ind_species_dict : dict
+        Cross‑species triplet indices (keys: 'anchor_ind_species',
+        'positive_ind_species', 'negative_ind_species').
+    edge_ndarray_species : np.ndarray
+        Cross‑species MNN edge array of shape (2, n_edges).
+    triplet_ind_sections_dict : dict, optional
+        Within‑species slice triplet indices.
+    edge_ndarray_sections : np.ndarray, optional
+        Within‑species slice MNN edge array.
+    hidden_dims : list
+        Encoder/decoder hidden dimensions [output_dim, bottleneck_dim].
+    stagate_epoch : int or dict
+        Pretraining epochs per species. If int, applies to all.
+    n_epochs_species : int
+        Number of joint cross‑species training epochs.
+    lr : float
+        Learning rate for pretraining.
+    key_added : str
+        Key in ``obsm`` where final embeddings are stored.
+    gradient_clipping : float
+        Max gradient norm for clipping.
+    weight_decay : float
+        Weight decay for pretraining optimizer.
+    lr_wd : float
+        (Unused; kept for compatibility.)
+    weight_decay_wd : float
+        (Unused; kept for compatibility.)
+    margin : float
+        Triplet margin for within‑species constraints.
+    margin_species : float
+        Triplet margin for cross‑species constraints.
+    lr_species : float
+        Learning rate for joint training.
+    beta : float
+        Weight for within‑species triplet loss.
+    verbose : bool
+        If True, print loss details every 100 epochs.
+    random_seed : int
+        Random seed.
+    iter_comb : tuple or None
+        Slice integration order.
+    knn_neigh : int
+        Neighbours for MNN construction.
+    device : torch.device
+        Device for joint training.
+    pretrain_device : torch.device
+        Device for pretraining.
+    mse_beta : float
+        Weight for MSE loss.
+    tri_beta : float
+        Weight for cross‑species triplet loss.
+    mmd_beta : float
+        Weight for MMD loss.
+    gan_beta : float
+        Weight for GAN loss (0 to disable).
+    gan_epoch : int
+        Discriminator training steps per generator step.
+    ot_beta : float
+        Weight for OT loss (0 to disable).
+    mmd_batch_size : int
+        Sample size for MMD computation.
+    if_knn_mnn_graph : bool
+        Whether to add cross‑species MNN edges to the graph.
+    if_integrate_within_species : bool
+        Whether to enable within‑species slice integration.
+    if_return_loss : bool
+        If True, return a loss tracking dictionary.
+    if_batch_pretrain : bool
+        Whether to pretrain with mini‑batch sampling.
+    batch_size_dict : dict
+        Mini‑batch sizes for pretraining per species.
+    batch_size : int
+        Batch size for subgraph sampling during joint training.
+    concate_pca_dim : int or None
+        PCA dimension for concatenated gene expression; if None, raw
+        expression is used.
+    umap_downsampling_rate : float
+        Downsampling fraction for UMAP visualisation.
+    adata_whole : AnnData
+        Concatenated AnnData object across species.
     structure_beta : float
         Weight for per-species geometric structure preservation loss (0 to disable).
     structure_sampling_ratio : float
         Fraction of intra-species edges used for structure loss (1.0 = all).
+    Returns
+    -------
+    adata_species_dict : dict
+        Updated AnnData dict with final embedding in ``obsm[key_added]``.
+    loss_dict : dict, optional
+        Recorded losses per epoch, returned when ``if_return_loss=True``.
     """
     import gc
     # Clear GPU cache at start
