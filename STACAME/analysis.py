@@ -24,7 +24,6 @@ import math
 
 def assign_color(adata_region, adata_cluster, region_palette, region_key, cluster_key, cluster_list):
     cluster_palette = {k:None for k in cluster_list}
-    #color_unselected = region_palette.
     region_list = list(region_palette.keys())
     for region_name in region_list:
         adata_region_obs = adata_region[adata_region.obs[region_key].isin([region_name])].obs_names
@@ -34,7 +33,7 @@ def assign_color(adata_region, adata_cluster, region_palette, region_key, cluste
             adata_cluster_obs = adata_cluster[adata_cluster.obs[cluster_key].isin([cluster_name])].obs_names
             overlap_num = len(set(adata_cluster_obs).intersection(set(adata_region_obs)))
             if overlap_num > overlap_max:
-                overlap_max = overlap_num #/ len(adata_region_obs)
+                overlap_max = overlap_num
                 aligned_cluster_name = cluster_name
         if aligned_cluster_name == None:
             aligned_cluster_name = cluster_list[-1]
@@ -245,19 +244,12 @@ def get_alignment_score_annotation(adata, type_name, method_name, annotation_nam
         region_alignment_score = 0.0
         start_adata = adata[adata.obs[type_name].isin([start_label])]
         start_adata = start_adata[start_adata.obs[annotation_name].isin([start_region])]
-        #print(start_adata)
         for label_remain in type_labels_remain:
-            #print(label_remain)
             region_remain = annotation_dict[label_remain][k]
-            #print(region_remain)
             adata_remain = adata[adata.obs[type_name].isin([label_remain])]
             adata_remain = adata_remain[adata_remain.obs[annotation_name].isin([region_remain])]
-            #print(adata_remain)
             X = np.concatenate([start_adata.obsm[method_name], adata_remain.obsm[method_name]], axis=0)
-            #print(X.shape)
             Y = np.concatenate([np.zeros((start_adata.n_obs, 1)), np.ones((adata_remain.n_obs, 1))], axis=0)
-            #print(Y.shape)
-            #print(seurat_alignment_score(X, Y, neighbor_frac=neighbor_frac, n_repeats=10))
             region_alignment_score = region_alignment_score + seurat_alignment_score(X, Y, neighbor_frac=neighbor_frac, n_repeats=10)
         
         region_alignment_score = region_alignment_score / (label_num - 1)
@@ -354,13 +346,13 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
         k += 1
         # Visualize UMAP of each species
         sc.pp.neighbors(adata,  n_neighbors=20, use_rep=key_umap, metric='cosine',  random_state=666)
-        sc.tl.louvain(adata, random_state=666, key_added="louvain", resolution=0.5)
+        sc.tl.leiden(adata, random_state=666, key_added="leiden", resolution=0.5)
         #sc.tl.leiden(adata_embedding, random_state=666, key_added="leiden", resolution=0.1)
         sc.tl.umap(adata, min_dist=1, random_state=666)
         plt.rcParams['font.sans-serif'] = "Arial"
         plt.rcParams["figure.figsize"] = (3, 3)
         plt.rcParams['font.size'] = 10
-        sc.pl.umap(adata, color=['batch_name', 'louvain', 'annotation'], ncols=3, wspace=0.7, show=True)
+        sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation'], ncols=3, wspace=0.7, show=True)
             
     
     adata_embedding = ad.AnnData(X = embedding_X, obs=embedding_obs_name)
@@ -371,11 +363,8 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
     adata_embedding.obs['annotation'] = embedding_annotation
     
     sc.pp.neighbors(adata_embedding,  n_neighbors=20, use_rep='X', metric='cosine',  random_state=666)
-    sc.tl.louvain(adata_embedding, random_state=666, key_added="louvain", resolution=0.5)
-    #sc.tl.leiden(adata_embedding, random_state=666, key_added="leiden", resolution=0.1)
+    sc.tl.leiden(adata_embedding, random_state=666, key_added="leiden", resolution=0.5)
     
-    print(adata_embedding.X.shape)
-
     sc.tl.umap(adata_embedding, min_dist=1, random_state=666)
 
     species_ids = list(adata_dict.keys())
@@ -390,16 +379,14 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
     plt.rcParams['font.size'] = 10
 
     # mclust clustering 
-    
-    
-    sc.pl.umap(adata_embedding, color=['species_id', 'batch_name', 'louvain', 'annotation'], ncols=2, wspace=0.5, show=True)
+    sc.pl.umap(adata_embedding, color=['species_id', 'batch_name', 'leiden', 'annotation'], ncols=2, wspace=0.5, show=True)
 
     fig, axes = plt.subplots(len(species_ids), 1,  figsize=(3, 3*len(species_ids))) #, dpi=500
     for i in range(len(species_ids)):
         species_id = species_ids[i]
         adata_mh = adata_embedding[adata_embedding.obs['species_id'].isin([species_id])]
         ax = sc.pl.umap(adata_embedding, show=False, ax=axes[i])
-        sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, size=10, legend_loc='on data') #legend_fontweight='normal',
+        sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, size=10, legend_loc='on data') 
     plt.show()
 
 
@@ -427,7 +414,7 @@ def clustering_umap_spatial(adata_dict, key_umap='STAGATE'):
         k += 1
         #Visualize UMAP of each species
         sc.pp.neighbors(adata,  n_neighbors=20, use_rep=key_umap, metric='cosine',  random_state=666)
-        sc.tl.louvain(adata, random_state=666, key_added="louvain", resolution=0.5)
+        sc.tl.leiden(adata, random_state=666, key_added="leiden", resolution=0.5)
         sc.tl.umap(adata, min_dist=1, random_state=666)
         plt.rcParams['font.sans-serif'] = "Arial"
         plt.rcParams["figure.figsize"] = (3, 3)
@@ -435,7 +422,7 @@ def clustering_umap_spatial(adata_dict, key_umap='STAGATE'):
         num_clusters = len(adata.obs['annotation'].unique())
         mclust_R(adata, num_cluster=num_clusters, used_obsm=key_umap)
         print('mclust, ARI = %01.3f' % ari_score(adata.obs['annotation'], adata.obs['mclust']))
-        sc.pl.umap(adata, color=['batch_name', 'louvain', 'annotation', 'mclust'], ncols=3, wspace=0.7, show=True)
+        sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation', 'mclust'], ncols=3, wspace=0.7, show=True)
 
         adata_dict[species_id] = adata
 
