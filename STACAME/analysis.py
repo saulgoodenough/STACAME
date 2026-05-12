@@ -347,12 +347,14 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
         # Visualize UMAP of each species
         sc.pp.neighbors(adata,  n_neighbors=20, use_rep=key_umap, metric='cosine',  random_state=666)
         sc.tl.leiden(adata, random_state=666, key_added="leiden", resolution=0.5)
-        #sc.tl.leiden(adata_embedding, random_state=666, key_added="leiden", resolution=0.1)
         sc.tl.umap(adata, min_dist=1, random_state=666)
         plt.rcParams['font.sans-serif'] = "Arial"
         plt.rcParams["figure.figsize"] = (3, 3)
         plt.rcParams['font.size'] = 10
-        sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation'], ncols=3, wspace=0.7, show=True)
+        sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation'], ncols=3, wspace=0.7, show=False)
+        fig = plt.gcf()
+        fig.suptitle(species_id)
+        plt.show()
             
     
     adata_embedding = ad.AnnData(X = embedding_X, obs=embedding_obs_name)
@@ -369,7 +371,7 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
 
     species_ids = list(adata_dict.keys())
     
-    species_color = ['#4778FA', '#8A1C62', '#ED7A43'] #['#ff7f0e', '#1f77b4']
+    species_color = ['#4778FA', '#8A1C62', '#ED7A43']
     species_color_dict = dict(zip(species_ids, species_color))
     adata_embedding.uns['species_colors'] = [species_color_dict[x] for x in adata_embedding.obs.species_id]
     
@@ -384,6 +386,7 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
     fig, axes = plt.subplots(len(species_ids), 1,  figsize=(3, 3*len(species_ids))) #, dpi=500
     for i in range(len(species_ids)):
         species_id = species_ids[i]
+        axes[i].set_title(species_id)
         adata_mh = adata_embedding[adata_embedding.obs['species_id'].isin([species_id])]
         ax = sc.pl.umap(adata_embedding, show=False, ax=axes[i])
         sc.pl.umap(adata_mh, color='annotation', ax=ax,  wspace=0.5, show=False, size=10, legend_loc='on data') 
@@ -422,7 +425,10 @@ def clustering_umap_spatial(adata_dict, key_umap='STAGATE'):
         num_clusters = len(adata.obs['annotation'].unique())
         mclust_R(adata, num_cluster=num_clusters, used_obsm=key_umap)
         print('mclust, ARI = %01.3f' % ari_score(adata.obs['annotation'], adata.obs['mclust']))
-        sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation', 'mclust'], ncols=3, wspace=0.7, show=True)
+        sc.pl.umap(adata, color=['batch_name', 'leiden', 'annotation', 'mclust'], ncols=3, wspace=0.7, show=False)
+        fig = plt.gcf()
+        fig.suptitle(species_id)
+        plt.show()
 
         adata_dict[species_id] = adata
 
@@ -434,7 +440,7 @@ def clustering_umap_spatial(adata_dict, key_umap='STAGATE'):
     adata_embedding.obs['annotation'] = embedding_annotation
     
     return adata_dict, adata_embedding
-
+    
 
 def spatial_annotation_species(adata_dict, img_key=None, scale_factor=None, spot_size=1, title_size=12):
     Batch_list = []
