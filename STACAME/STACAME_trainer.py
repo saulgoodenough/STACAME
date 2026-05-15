@@ -11,6 +11,7 @@ from torch_geometric.utils import k_hop_subgraph
 from math import ceil
 import anndata as ad
 from collections import Counter
+from STACAME import STALIGNER
 from .utils_OT import *
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -144,9 +145,9 @@ class STACAME_trainer:
                  edge_ndarray_species,
                  triplet_ind_sections_dict=None,
                  edge_ndarray_sections=None,
-                 hidden_dims=[256, 20],
+                 hidden_dims=[256, 30],
                  stagate_epoch=500,
-                 n_epochs_species=2000,
+                 n_epochs_species=1500,
                  lr=0.001,
                  key_added='STACAME',
                  gradient_clipping=5.,
@@ -165,8 +166,8 @@ class STACAME_trainer:
                  pretrain_device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu'),
                  mse_beta=1,
                  tri_beta=5,
-                 mmd_beta=1,
-                 gan_beta=0,
+                 mmd_beta=5,
+                 gan_beta=5,
                  gan_epoch=3,
                  ot_beta=0,
                  mmd_batch_size=1024,
@@ -174,7 +175,7 @@ class STACAME_trainer:
                  if_integrate_within_species=False,
                  if_return_loss=False,
                  adata_whole=None,
-                 concate_pca_dim=64,
+                 concate_pca_dim=200,
                  if_use_light_model=False,
                  structure_beta=0.0,
                  structure_sampling_ratio=1.0,
@@ -288,7 +289,7 @@ class STACAME_trainer:
                 model = STACAME.STACAME(
                     hidden_dims=[data.x.shape[1], self.hidden_dims[0], self.hidden_dims[1]]
                 ).to(self.pretrain_device)
-                optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+                optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, weight_decay=self.weight_decay, foreach=False)
 
             species_order += 1
             print('Pretrain with STAGATE_multiple...')
@@ -461,7 +462,7 @@ class STACAME_trainer:
 
         self.optimizer = torch.optim.Adam(
             list(self.model.parameters()) + list(self.auxiliary_model.parameters()),
-            lr=self.lr_species, weight_decay=self.weight_decay
+            lr=self.lr_species, weight_decay=self.weight_decay, foreach=False
         )
 
         self.auxiliary_D_Z = STACAME.MultiClassDiscriminator(self.hidden_dims[1], n_species).to(self.device)
