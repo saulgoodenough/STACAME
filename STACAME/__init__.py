@@ -13,6 +13,7 @@ from .mnn_utils import create_dictionary_mnn, get_species_triples, acquire_pairs
 from .train_STACAME import train_STACAME, train_STACAME_GAN, train_STACAME_subgraph, train_STACAME_subgraph_GAN,  train_STACAME_subgraph_auxiliary
 
 from .STACAME_trainer import STACAME_trainer
+from .STACAME_subgraph_trainer import STACAME_subgraph_trainer
 
 from .process import STACAME_processer, STACAME_processer_subgraph
 

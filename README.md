@@ -34,7 +34,7 @@ conda create -n stacame python=3.11
 #activate your environment
 conda activate stacame
 ```
-Install pytorch (>= 2.7.1) and torch_geometric depends on your GPU and cuda version. 
+Install pytorch (>= 2.7.1, https://pytorch.org/get-started/previous-versions/) and torch_geometric depends on your GPU and cuda version. 
 The torch-geometric library is required, please see the installation steps in https://github.com/pyg-team/pytorch_geometric#installation
 
 ```

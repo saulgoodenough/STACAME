@@ -27,7 +27,7 @@ from tqdm import tqdm
 from torch_geometric.loader import NeighborSampler
 from torch.optim.lr_scheduler import StepLR
 from .train_STACAME import random_list, clustering_umap, clustering_umap_downsampling
-
+import gc
 
 class STACAME_trainer:
     """
@@ -665,6 +665,27 @@ class STACAME_trainer:
                     auxiliary_loss_D = F.cross_entropy(auxiliary_logits_D, self.true_dom)
                     auxiliary_loss_D.backward(retain_graph=True)
                     self.auxiliary_optimizer_D.step()
+            # 8) GAN domain confusion loss
+            # if self.gan_beta != 0:
+            #     # 切断生成器梯度，避免判别器反向传播影响生成器，同时避免图重用
+            #     z_detached = z.detach()
+            #     auxiliary_z_detached = auxiliary_z.detach()
+            
+            #     for _ in range(self.gan_epoch):
+            #         self.optimizer_D.zero_grad()
+            #         logits_D = self.D_Z(z_detached)
+            #         loss_D = F.cross_entropy(logits_D, self.true_dom)
+            #         loss_D.backward()          
+            #         self.optimizer_D.step()
+            
+            #     for _ in range(self.gan_epoch):
+            #         self.auxiliary_optimizer_D.zero_grad()
+            #         auxiliary_logits_D = self.auxiliary_D_Z(auxiliary_z_detached)
+            #         auxiliary_loss_D = F.cross_entropy(auxiliary_logits_D, self.true_dom)
+            #         auxiliary_loss_D.backward()
+            #         self.auxiliary_optimizer_D.step()
+            
+            # Generator adversarial loss uses the original z (with gradients) to update the generator
             loss_G_GAN = -F.cross_entropy(self.D_Z(z), self.true_dom) - F.cross_entropy(
                 self.auxiliary_D_Z(auxiliary_z), self.true_dom)
 
@@ -752,10 +773,6 @@ class STACAME_trainer:
 
             # Verbose logging
             if self.verbose and epoch % 100 == 0:
-                cos_sim = torch.nn.CosineEmbeddingLoss(reduce=True)(
-                    anchor_arr_species, positive_arr_species,
-                    torch.ones(sampling_num_spe).to(self.device)
-                ).item()
                 print(f'---------------------------------Epoch {epoch:4d}-----------------------------------')
                 print(f'Total loss: {loss.item():.4f}| '
                       f'MSE (weighted): {self.mse_beta * mse_loss.item():.4f}| '
@@ -769,7 +786,6 @@ class STACAME_trainer:
                     print(f'Manifold (weighted): {self.structure_beta * geom_structure_loss.item():.4f}')
                 if self.if_integrate_within_species:
                     print(f'Cross-slices Tri: {self.beta * tri_output.item():.4f}')
-                    print(f'Cosine sim (mon.): {cos_sim:.4f}')
                     if self.if_return_loss:
                         self.loss_dict['Loss name'].append('Cross-slices triplet')
                         self.loss_dict['Epoch'].append(epoch)
@@ -805,7 +821,7 @@ class STACAME_trainer:
             'adata_whole_auxiliary': self.adata_whole.obsm['auxiliary'].copy() if 'auxiliary' in self.adata_whole.obsm else None,
         }
         torch.save(checkpoint, path)
-        print(f'Checkpoint saved to {path}')
+        #print(f'Checkpoint saved to {path}')
 
     def load_checkpoint(self, path):
         """
