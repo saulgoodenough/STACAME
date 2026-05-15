@@ -295,30 +295,34 @@ def Stats_Spatial_Net(adata):
     plt.show()
 
 
-def mclust_R(adata, num_cluster, modelNames='EEE', used_obsm='STAGATE', random_seed=666):
-    """\
-    Clustering using the mclust algorithm.
-    The parameters are the same as those in the R package mclust.
-    """
-
+def mclust_R(adata, num_cluster, modelNames='EEE', used_obsm='STACAME', random_seed=666):
     np.random.seed(random_seed)
     import rpy2.robjects as robjects
     robjects.r.library("mclust")
 
-    import rpy2.robjects.numpy2ri
-    rpy2.robjects.numpy2ri.activate()
-    r_random_seed = robjects.r['set.seed']
-    r_random_seed(random_seed)
-    rmclust = robjects.r['Mclust']
+    from rpy2.robjects import numpy2ri
+    from rpy2.robjects.conversion import localconverter
 
-    res = rmclust(adata.obsm[used_obsm], num_cluster, modelNames)
+    data = adata.obsm[used_obsm]
+
+    with localconverter(numpy2ri.converter):
+        r_code = """
+        function(mat, G, modelNames, seed) {
+            set.seed(seed)
+            colnames(mat) <- paste0("V", seq_len(ncol(mat)))
+            Mclust(mat, G=G, modelNames=modelNames)
+        }
+        """
+        r_mclust_wrapper = robjects.r(r_code)
+        res = r_mclust_wrapper(data, num_cluster, modelNames, random_seed)
+
     print(res)
     mclust_res = np.array(res[-2])
-
     adata.obs['mclust'] = mclust_res
     adata.obs['mclust'] = adata.obs['mclust'].astype('int')
     adata.obs['mclust'] = adata.obs['mclust'].astype('category')
     return adata
+
 
 
 

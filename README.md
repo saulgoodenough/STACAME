@@ -51,13 +51,11 @@ Install all the required packages.
 The use of the mclust algorithm requires the rpy2 package (Python) and the mclust package (R). See https://pypi.org/project/rpy2/ and https://cran.r-project.org/web/packages/mclust/index.html for detail.
 
 ```
-pip install -r .\pip.txt
+pip install -r pip.txt
 
 conda install r-base r-mclust -c conda-forge
 
 pip install rpy2
-
-pip install ipykernel
 
 python -m ipykernel install --user --name stacame --display-name "stacame" 
 ```

@@ -11,7 +11,6 @@ from torch_geometric.utils import k_hop_subgraph
 from math import ceil
 import anndata as ad
 from collections import Counter
-from STACAME import STALIGNER
 from .utils_OT import *
 import matplotlib.pyplot as plt
 import seaborn as sns
