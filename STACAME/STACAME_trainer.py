@@ -11,7 +11,6 @@ from torch_geometric.utils import k_hop_subgraph
 from math import ceil
 import anndata as ad
 from collections import Counter
-from STACAME import STALIGNER
 from .utils_OT import *
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -467,10 +466,10 @@ class STACAME_trainer:
 
         self.auxiliary_D_Z = STACAME.MultiClassDiscriminator(self.hidden_dims[1], n_species).to(self.device)
         self.auxiliary_optimizer_D = torch.optim.Adam(
-            list(self.auxiliary_D_Z.parameters()), lr=0.001, weight_decay=0.001
+            list(self.auxiliary_D_Z.parameters()), lr=0.001, weight_decay=0.001, foreach=False
         )
         self.D_Z = STACAME.MultiClassDiscriminator(self.hidden_dims[1], n_species).to(self.device)
-        self.optimizer_D = torch.optim.Adam(list(self.D_Z.parameters()), lr=0.001, weight_decay=0.001)
+        self.optimizer_D = torch.optim.Adam(list(self.D_Z.parameters()), lr=0.001, weight_decay=0.001, foreach=False)
 
         # ---- Ground truth domain labels ----
         species_list_gt = []
@@ -667,7 +666,6 @@ class STACAME_trainer:
                     self.auxiliary_optimizer_D.step()
             # 8) GAN domain confusion loss
             # if self.gan_beta != 0:
-            #     # 切断生成器梯度，避免判别器反向传播影响生成器，同时避免图重用
             #     z_detached = z.detach()
             #     auxiliary_z_detached = auxiliary_z.detach()
             

@@ -296,28 +296,48 @@ def Stats_Spatial_Net(adata):
 
 
 def mclust_R(adata, num_cluster, modelNames='EEE', used_obsm='STACAME', random_seed=666):
-    np.random.seed(random_seed)
+    """
+    Clustering using mclust R package.
+    Compatible with rpy2 >= 3.5 (also works with older if fallback used).
+    """
+    import numpy as np
     import rpy2.robjects as robjects
-    robjects.r.library("mclust")
-
     from rpy2.robjects import numpy2ri
-    from rpy2.robjects.conversion import localconverter
 
+    robjects.r.library("mclust")
     data = adata.obsm[used_obsm]
 
-    with localconverter(numpy2ri.converter):
-        r_code = """
-        function(mat, G, modelNames, seed) {
-            set.seed(seed)
-            colnames(mat) <- paste0("V", seq_len(ncol(mat)))
-            Mclust(mat, G=G, modelNames=modelNames)
-        }
-        """
-        r_mclust_wrapper = robjects.r(r_code)
-        res = r_mclust_wrapper(data, num_cluster, modelNames, random_seed)
+    # R wrapper to set column names safely
+    r_code = """
+    function(mat, G, modelNames, seed) {
+        set.seed(seed)
+        colnames(mat) <- paste0("V", seq_len(ncol(mat)))
+        Mclust(mat, G = G, modelNames = modelNames)
+    }
+    """
+    r_mclust_wrapper = robjects.r(r_code)
 
-    print(res)
-    mclust_res = np.array(res[-2])
+    # Version-adaptive conversion
+    if hasattr(numpy2ri, 'converter') and hasattr(numpy2ri.converter, 'context'):
+        with numpy2ri.converter.context():
+            res = r_mclust_wrapper(data, num_cluster, modelNames, random_seed)
+    else:
+        numpy2ri.activate()
+        try:
+            res = r_mclust_wrapper(data, num_cluster, modelNames, random_seed)
+        finally:
+            numpy2ri.deactivate()
+
+    # Extract classification – handles OrdDict or normal R object
+    if isinstance(res, robjects.vectors.ListVector):
+        # Sometimes res is a ListVector, which has .rx2
+        mclust_res = np.array(res.rx2('classification'))
+    elif hasattr(res, 'get'):  # like OrdDict
+        mclust_res = np.array(res['classification'])
+    else:
+        # Fallback: try index by name using .rx
+        mclust_res = np.array(res.rx('classification'))
+
     adata.obs['mclust'] = mclust_res
     adata.obs['mclust'] = adata.obs['mclust'].astype('int')
     adata.obs['mclust'] = adata.obs['mclust'].astype('category')

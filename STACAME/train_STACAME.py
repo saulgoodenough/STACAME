@@ -89,7 +89,7 @@ def clustering_umap(adata_dict, key_umap='STACAME'):
         k += 1
         # Per‑species UMAP (visualization is optional; we skip it here for brevity)
         sc.pp.neighbors(adata, n_neighbors=20, use_rep=key_umap, metric='cosine', random_state=666)
-        sc.tl.leiden(adata, random_state=666, key_added="leiden", resolution=1)
+        sc.tl.leiden(adata, random_state=666, key_added="leiden", resolution=0.5)
         sc.tl.umap(adata, min_dist=1, random_state=666)
         plt.rcParams['font.sans-serif'] = "Arial"
         plt.rcParams["figure.figsize"] = (3, 3)

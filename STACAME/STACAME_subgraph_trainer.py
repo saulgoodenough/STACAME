@@ -156,7 +156,7 @@ class STACAME_subgraph_trainer:
                  edge_ndarray_sections=None,
                  hidden_dims=[256, 30],
                  stagate_epoch=500,
-                 n_epochs_species=2000,
+                 n_epochs_species=500,
                  lr=0.001,
                  key_added='STACAME',
                  gradient_clipping=5.,
@@ -176,21 +176,21 @@ class STACAME_subgraph_trainer:
                  mse_beta=1,
                  tri_beta=1,
                  mmd_beta=1,
-                 gan_beta=0,
+                 gan_beta=1,
                  gan_epoch=3,
                  ot_beta=0,
-                 mmd_batch_size=2048,
+                 mmd_batch_size=1024,
                  if_knn_mnn_graph=False,
                  if_integrate_within_species=False,
                  if_return_loss=False,
                  if_batch_pretrain=False,
                  batch_size_dict={'Mouse': 10000, 'Marmoset': 10000, 'Macaque': 10000},
-                 batch_size=2048,
-                 concate_pca_dim=None,
+                 batch_size=1024,
+                 concate_pca_dim=128,
                  umap_downsampling_rate=0.1,
                  adata_whole=None,
                  if_use_light_model=False,
-                 structure_beta=0.0,
+                 structure_beta=1.0,
                  structure_sampling_ratio=1.0,
                  model_save_path=None,
                  resume_from_checkpoint=None):
@@ -768,7 +768,7 @@ class STACAME_subgraph_trainer:
                 #         auxiliary_loss_D.backward(retain_graph=True)
                 #         self.auxiliary_optimizer_D.step()
                 if self.gan_beta != 0:
-                    z_detached = z_batch.detach()          # 切断梯度，避免生成器计算图被保留
+                    z_detached = z_batch.detach()         
                     for _ in range(self.gan_epoch):
                         self.optimizer_D.zero_grad()
                         logits_D = self.D_Z(z_detached)
