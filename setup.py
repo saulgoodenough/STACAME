@@ -1,7 +1,7 @@
 from setuptools import Command, find_packages, setup
 
 __lib_name__ = "STACAME"
-__lib_version__ = "1.0.0"
+__lib_version__ = "1.1.0"
 __description__ = "Integrating spatial transcriptomics data across species"
 __url__ = "https://github.com/zhanglabtools/STACAME"
 __author__ = "Biao Zhang"
