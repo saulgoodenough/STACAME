@@ -1,14 +1,13 @@
 import numpy as np
 import torch.backends.cudnn as cudnn
 cudnn.deterministic = True
-cudnn.benchmark = True
+cudnn.benchmark = False
 import torch.nn.functional as F
 from .gat_conv import GATConv
 from typing import List, Optional, Union
 import torch
 from torch import nn
 import random
-
 
 
 class RBF(nn.Module):
@@ -104,18 +103,6 @@ class STACAMEDecoder_light(torch.nn.Module):
         h3 = self.conv3(h2, edge_index, attention=False)
         return h2, h3
 
-# class STACAMEDecoder_light(torch.nn.Module):
-#     def __init__(self, hidden_dims):
-#         super(STACAMEDecoder_light, self).__init__()
-#         [in_dim, num_hidden, out_dim] = hidden_dims
-#         self.conv1 = GATConv(out_dim, out_dim, heads=1, concat=False,
-#                              dropout=0, add_self_loops=False, bias=False)
-#         self.conv3 = GATConv(out_dim, in_dim, heads=1, concat=False,
-#                              dropout=0, add_self_loops=False, bias=False)
-#     def forward(self, features, edge_index):
-#         h1 = F.elu(self.conv1(features, edge_index))
-#         h2 = self.conv3(h1, edge_index, attention=True)
-#         return h1, h2
 
 class STACAME_Decoder(torch.nn.Module):
     def __init__(self, hidden_dims, use_mlp=False):
@@ -250,9 +237,9 @@ class STACAMEDecoder_minibatch(torch.nn.Module):
                                   tied_attention=self.conv1.attentions))
             h4 = self.conv4(h3, adjs, attention=False)
 
-        return h2, h4  # F.log_softmax(x, dim=-1)
+        return h2, h4
         
-    def inference(self, x_all, all_loader):
+    def inference(self, x_all, all_loader, device):
         # This function will be called in test
         for i in range(4):
             xs = []

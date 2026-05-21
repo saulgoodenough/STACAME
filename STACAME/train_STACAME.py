@@ -1,7 +1,7 @@
 from .STACAME import STACAME
 import torch.backends.cudnn as cudnn
 cudnn.deterministic = True
-cudnn.benchmark = True
+cudnn.benchmark = False
 from STACAME import create_dictionary_mnn
 from STACAME import STACAME
 import scanpy as sc
