@@ -621,7 +621,6 @@ class STACAME_subgraph_trainer:
     def joint_train(self):
         """Cross‑species subgraph joint training loop."""
         plot_epoch = self.n_epochs_species // 3
-
         for epoch in tqdm(range(self.start_epoch, self.n_epochs_species)):
             # Update STAGATE arrays in adata (recording)
             k_add = 0
@@ -668,7 +667,7 @@ class STACAME_subgraph_trainer:
                     negative_ind_species_ = np.array(negative_ind_species_)
 
             triples_N = len(anchor_ind_species_)
-            self.ite_N = max(int((triples_N // self.batch_size)) + 1, 1)
+            self.ite_N = max(int((triples_N // self.batch_size)), 1)
             # Iterate over subgraph mini‑batches
             for ite_ in range(self.ite_N):
                 triples_N = len(anchor_ind_species_)
