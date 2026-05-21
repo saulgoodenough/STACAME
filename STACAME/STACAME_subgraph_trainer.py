@@ -668,7 +668,7 @@ class STACAME_subgraph_trainer:
                     negative_ind_species_ = np.array(negative_ind_species_)
 
             triples_N = len(anchor_ind_species_)
-            ite_N = max(int((triples_N // self.batch_size)) + 1, 1)
+            self.ite_N = max(int((triples_N // self.batch_size)) + 1, 1)
             # Iterate over subgraph mini‑batches
             for ite_ in range(self.ite_N):
                 triples_N = len(anchor_ind_species_)
