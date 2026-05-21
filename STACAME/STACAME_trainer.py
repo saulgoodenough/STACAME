@@ -1,5 +1,6 @@
 from .STACAME import STACAME
 import torch.backends.cudnn as cudnn
+
 cudnn.deterministic = True
 cudnn.benchmark = False
 from STACAME import create_dictionary_mnn
@@ -17,6 +18,7 @@ import seaborn as sns
 import colorcet as cc
 import random
 import os
+
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 import torch
@@ -30,22 +32,23 @@ from torch.optim.lr_scheduler import StepLR
 from .train_STACAME import random_list, clustering_umap, clustering_umap_downsampling
 import gc
 
+
 class STACAME_trainer:
     """
     Trainer class for cross-species spatial transcriptomics integration using
     STACAME with GAN-based domain confusion, auxiliary model, and optional
     manifold preserving loss. Supports checkpoint saving and resuming.
 
-    # New traninng
+    # New training
     trainer = STACAME_trainer(
         adata_species_dict, triplet_ind_species_dict, edge_ndarray_species,
         model_save_path='./checkpoints',
         if_return_loss=True,
         verbose=True
     )
-    result = trainer.run()  # return adata_species_dict 和 loss_dict（若 if_return_loss=True）
-    
-    # Break down and continue tranining
+    result = trainer.run()  # return adata_species_dict and loss_dict (if if_return_loss=True)
+
+    # Break down and continue training
     trainer_resume = STACAME_trainer(
         adata_species_dict, triplet_ind_species_dict, edge_ndarray_species,
         model_save_path='./checkpoints',
@@ -234,6 +237,7 @@ class STACAME_trainer:
         self.auxiliary_D_Z = None
         self.optimizer = None
         self.auxiliary_optimizer_D = None
+        self.optimizer_D = None  # 判别器 D_Z 的优化器
         self.best_loss = float('inf')
         self.best_epoch = 0
         self.best_embeddings = None
@@ -290,7 +294,8 @@ class STACAME_trainer:
                 model = STACAME.STACAME(
                     hidden_dims=[data.x.shape[1], self.hidden_dims[0], self.hidden_dims[1]]
                 ).to(self.pretrain_device)
-                optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, weight_decay=self.weight_decay, foreach=False)
+                optimizer = torch.optim.Adam(model.parameters(), lr=self.lr, weight_decay=self.weight_decay,
+                                             foreach=False)
 
             species_order += 1
             print('Pretrain with STAGATE_multiple...')
@@ -666,25 +671,6 @@ class STACAME_trainer:
                     auxiliary_loss_D = F.cross_entropy(auxiliary_logits_D, self.true_dom)
                     auxiliary_loss_D.backward(retain_graph=True)
                     self.auxiliary_optimizer_D.step()
-            # 8) GAN domain confusion loss
-            # if self.gan_beta != 0:
-            #     z_detached = z.detach()
-            #     auxiliary_z_detached = auxiliary_z.detach()
-            
-            #     for _ in range(self.gan_epoch):
-            #         self.optimizer_D.zero_grad()
-            #         logits_D = self.D_Z(z_detached)
-            #         loss_D = F.cross_entropy(logits_D, self.true_dom)
-            #         loss_D.backward()          
-            #         self.optimizer_D.step()
-            
-            #     for _ in range(self.gan_epoch):
-            #         self.auxiliary_optimizer_D.zero_grad()
-            #         auxiliary_logits_D = self.auxiliary_D_Z(auxiliary_z_detached)
-            #         auxiliary_loss_D = F.cross_entropy(auxiliary_logits_D, self.true_dom)
-            #         auxiliary_loss_D.backward()
-            #         self.auxiliary_optimizer_D.step()
-            
             # Generator adversarial loss uses the original z (with gradients) to update the generator
             loss_G_GAN = -F.cross_entropy(self.D_Z(z), self.true_dom) - F.cross_entropy(
                 self.auxiliary_D_Z(auxiliary_z), self.true_dom)
@@ -709,7 +695,8 @@ class STACAME_trainer:
                                                device=self.device, dtype=torch.float32)
                     edge_w = raw_weights * (len(raw_weights) / raw_weights.sum())
                     loss_z = self.manifold_preserving_loss(z, self.data.x, sampled_edges, edge_weights=edge_w)
-                    loss_aux = self.manifold_preserving_loss(auxiliary_z, self.data.x, sampled_edges, edge_weights=edge_w)
+                    loss_aux = self.manifold_preserving_loss(auxiliary_z, self.data.x, sampled_edges,
+                                                             edge_weights=edge_w)
                     geom_structure_loss = loss_z + loss_aux
 
             # ---- Total loss ----
@@ -800,7 +787,7 @@ class STACAME_trainer:
                     clustering_umap(self.adata_species_dict, key_umap=self.key_added)
 
     def save_checkpoint(self, path):
-        """Save full training state to a checkpoint file."""
+        """Save full training state to a checkpoint file, including optimizer_D."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         checkpoint = {
             'epoch': self.best_epoch,
@@ -809,6 +796,7 @@ class STACAME_trainer:
             'D_Z_state_dict': self.D_Z.state_dict(),
             'auxiliary_D_Z_state_dict': self.auxiliary_D_Z.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'optimizer_D_state_dict': self.optimizer_D.state_dict(),  # 新增：保存判别器优化器状态
             'auxiliary_optimizer_D_state_dict': self.auxiliary_optimizer_D.state_dict(),
             'best_loss': self.best_loss,
             'best_embeddings': self.best_embeddings,
@@ -818,10 +806,10 @@ class STACAME_trainer:
             'edge_ndarray': self.edge_ndarray,
             'node_species': self.node_species,
             'start_epoch': self.best_epoch + 1,
-            'adata_whole_auxiliary': self.adata_whole.obsm['auxiliary'].copy() if 'auxiliary' in self.adata_whole.obsm else None,
+            'adata_whole_auxiliary': self.adata_whole.obsm[
+                'auxiliary'].copy() if 'auxiliary' in self.adata_whole.obsm else None,
         }
         torch.save(checkpoint, path)
-        #print(f'Checkpoint saved to {path}')
 
     def load_checkpoint(self, path):
         """
@@ -835,6 +823,7 @@ class STACAME_trainer:
         self.D_Z.load_state_dict(checkpoint['D_Z_state_dict'])
         self.auxiliary_D_Z.load_state_dict(checkpoint['auxiliary_D_Z_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])  # 新增：加载判别器优化器状态
         self.auxiliary_optimizer_D.load_state_dict(checkpoint['auxiliary_optimizer_D_state_dict'])
         self.best_loss = checkpoint['best_loss']
         self.best_epoch = checkpoint['epoch']

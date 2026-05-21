@@ -249,7 +249,7 @@ class STACAME_subgraph_trainer:
         self.D_Z = None
         self.auxiliary_D_Z = None
         self.optimizer = None
-        self.optimizer_D = None
+        self.optimizer_D = None           # 判别器 D_Z 的优化器
         self.auxiliary_optimizer_D = None
         self.z_dict = {}
         self.species_add_dict = {}
@@ -691,7 +691,7 @@ class STACAME_subgraph_trainer:
                                              positive_ind_sections_batch + negative_ind_sections_batch))
 
                 idx_subset, edge_index_batch, mapping, edge_mask = k_hop_subgraph(
-                    node_idx=torch.LongTensor(ind_list_init), 
+                    node_idx=torch.LongTensor(ind_list_init),
                     num_hops=1, edge_index=self.data.edge_index, relabel_nodes=True
                 )
                 idx_subset_list = [int(x) for x in idx_subset]
@@ -754,28 +754,14 @@ class STACAME_subgraph_trainer:
                 anchor_arr_species_X = x_batch[[idx_map[x] for x in anchor_ind_species_batch],]
                 positive_arr_species_X = x_batch[[idx_map[x] for x in positive_ind_species_batch],]
 
-                # 5) GAN
-                # if self.gan_beta != 0:
-                #     for _ in range(self.gan_epoch):
-                #         self.optimizer_D.zero_grad()
-                #         logits_D = self.D_Z(z_batch)
-                #         loss_D = F.cross_entropy(logits_D, self.true_dom[idx_subset_list,].to(self.device))
-                #         loss_D.backward(retain_graph=True)
-                #         self.optimizer_D.step()
-                #     for _ in range(self.gan_epoch):
-                #         self.auxiliary_optimizer_D.zero_grad()
-                #         auxiliary_logits_D = self.auxiliary_D_Z(auxiliary_z_batch)
-                #         auxiliary_loss_D = F.cross_entropy(auxiliary_logits_D,
-                #                                            self.true_dom[idx_subset_list,].to(self.device))
-                #         auxiliary_loss_D.backward(retain_graph=True)
-                #         self.auxiliary_optimizer_D.step()
+                # 5) GAN (discriminator updates + generator adversarial loss)
                 if self.gan_beta != 0:
-                    z_detached = z_batch.detach()         
+                    z_detached = z_batch.detach()
                     for _ in range(self.gan_epoch):
                         self.optimizer_D.zero_grad()
                         logits_D = self.D_Z(z_detached)
                         loss_D = F.cross_entropy(logits_D, self.true_dom[idx_subset_list].to(self.device))
-                        loss_D.backward()                 
+                        loss_D.backward()
                         self.optimizer_D.step()
                     auxiliary_z_detached = auxiliary_z_batch.detach()
                     for _ in range(self.gan_epoch):
@@ -842,7 +828,7 @@ class STACAME_subgraph_trainer:
                             self.mmd_beta * mmd_loss_sum + self.gan_beta * loss_G_GAN +
                             self.ot_beta * loss_ot + self.structure_beta * geom_structure_loss)
 
-                loss.backward(retain_graph=True) #
+                loss.backward(retain_graph=True)
                 torch.nn.utils.clip_grad_norm_(list(self.model.parameters()) + list(self.auxiliary_model.parameters()),
                                                self.gradient_clipping)
                 self.optimizer.step()
@@ -916,7 +902,7 @@ class STACAME_subgraph_trainer:
                     clustering_umap(self.adata_species_dict, key_umap=self.key_added)
 
     def save_checkpoint(self, path):
-        """Save full training state to a checkpoint file."""
+        """Save full training state to a checkpoint file, including optimizer_D."""
         os.makedirs(os.path.dirname(path), exist_ok=True)
         checkpoint = {
             'epoch': self.best_epoch,
@@ -925,7 +911,7 @@ class STACAME_subgraph_trainer:
             'D_Z_state_dict': self.D_Z.state_dict(),
             'auxiliary_D_Z_state_dict': self.auxiliary_D_Z.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'optimizer_D_state_dict': self.optimizer_D.state_dict(),
+            'optimizer_D_state_dict': self.optimizer_D.state_dict(),               # 保存判别器优化器
             'auxiliary_optimizer_D_state_dict': self.auxiliary_optimizer_D.state_dict(),
             'best_loss': self.best_loss,
             'best_embeddings': self.best_embeddings,
@@ -937,13 +923,11 @@ class STACAME_subgraph_trainer:
             'adata_whole_auxiliary': self.adata_whole.obsm['auxiliary'].copy()
         }
         torch.save(checkpoint, path)
-        #print(f'Checkpoint saved to {path}')
 
     def load_checkpoint(self, path):
         """
         Load training state from a checkpoint file and prepare to resume.
-        The models, optimizers, and internal state are restored so that
-        training can continue from the next epoch.
+        Restores models, optimizers (including optimizer_D), and internal state.
         """
         checkpoint = torch.load(path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
@@ -951,7 +935,7 @@ class STACAME_subgraph_trainer:
         self.D_Z.load_state_dict(checkpoint['D_Z_state_dict'])
         self.auxiliary_D_Z.load_state_dict(checkpoint['auxiliary_D_Z_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])
+        self.optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])     # 恢复判别器优化器
         self.auxiliary_optimizer_D.load_state_dict(checkpoint['auxiliary_optimizer_D_state_dict'])
         self.best_loss = checkpoint['best_loss']
         self.best_epoch = checkpoint['epoch']
