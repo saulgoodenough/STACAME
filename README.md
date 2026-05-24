@@ -70,7 +70,7 @@ python setup.py install
 
 ## Tutorials
 
-Three step-by-step tutorials are included in the `Tutorial` folder and https://STACAME.readthedocs.io/en/latest/ to show how to use STACAME.
+Ten step-by-step tutorials are included in the `Tutorial` folder to show how to use STACAME.
 Datasets are available on https://drive.google.com/drive/folders/1hH3FBU0gU0iRdY4197ED3JDJHC1tsvqp?usp=drive_link 
 
 - [Tutorial 1: Integrating human and macaque DLPFC slices (10x Visium, Stereo-seq)](./Tutorials/Tutorial1_DLPFC.ipynb)
