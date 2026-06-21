@@ -91,5 +91,6 @@ If you have any questions, please feel free to contact us [biaozhang@ysu.edu.cn]
 
 
 ## Citation
-Biao Zhang, Xiang Zhou, Shuqin Zhang and Shihua Zhang. "STACAME". 2025.
+Biao Zhang, Xiang Zhou, Shuqin Zhang* and Shihua Zhang*. "Deciphering shared and divergent tissue architectures from cross-species spatial transcriptomics". bioRxiv Preprint. 2026. DOI:https://doi.org/10.64898/2026.06.16.732760
+
 
